@@ -543,11 +543,13 @@ button { font: inherit; color: inherit; }
 .ens-clock > span:last-child { margin-left: auto; }
 .ens-clock[data-state="paused"] > b { color: var(--en-mute); }
 
-.ens-dial text { font: 600 9px var(--font-mono); fill: var(--en-mute); }
-.ens-dial .face { fill: var(--en-panel2); stroke: var(--en-line2); }
-.ens-dial .tick { stroke: var(--en-line2); }
-.ens-dial .hand { stroke-width: 3; stroke-linecap: round; }
-.ens-dial:focus-visible { outline: 2px solid var(--en-accent); outline-offset: 2px; border-radius: 6px; }
+.ens-cyl { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.1rem; min-width: 3.6rem; padding: 0.4rem 0.5rem; background: var(--en-panel2); border: 1px solid var(--en-line2); border-bottom: 3px solid var(--cyl, var(--en-line2)); border-radius: 3px; color: var(--en-ink); cursor: pointer; font: inherit; }
+.ens-cyl b { font: 700 1.1rem var(--font-mono); color: var(--cyl, var(--en-ink)); }
+.ens-cyl small { font-size: 0.68rem; color: var(--en-mute); }
+.ens-cyl[aria-pressed="true"] { background: color-mix(in srgb, var(--cyl) 18%, var(--en-panel2)); border-color: var(--cyl); }
+.ens-cyl:disabled { cursor: default; opacity: 0.85; }
+.ens-cyl:focus-visible { outline: 2px solid var(--en-accent); outline-offset: 2px; }
+
 
 .ens-meter { height: 0.5rem; border: 1px solid var(--en-line2); border-radius: 2px; background: var(--en-panel2); overflow: hidden; }
 .ens-meter > i { display: block; height: 100%; background: var(--en-ok); transition: width 0.25s ease, background 0.25s ease; }

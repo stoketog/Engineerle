@@ -11,7 +11,7 @@ import { solutions as bargeSolutions, type BargeSpec } from '@/engineerle/barge'
 import type { GraphSpec } from '@/engineerle/graph';
 import type { LeverSpec } from '@/engineerle/lever';
 import type { BridgeSpec } from '@/engineerle/truss';
-import type { CrankSpec } from '@/engineerle/crank';
+import { bestResiduals, type CrankshaftSpec } from '@/engineerle/crankshaft';
 
 const PROD = 'http://localhost:4182/';
 const servers: ChildProcess[] = [];
@@ -34,7 +34,9 @@ const specOf = (id: string) => en.puzzles[tabOf(id)].spec;
 const gSpec = specOf('waveform') as GraphSpec;
 const lSpec = specOf('lever') as LeverSpec;
 const bSpec = specOf('bridge') as BridgeSpec;
-const eSpec = specOf('engine') as CrankSpec;
+const cSpec = specOf('crankshaft') as CrankshaftSpec;
+const cBest = bestResiduals(cSpec).orders[0];
+const cPoor = Array.from({ length: cSpec.n }, (_, i) => i + 1);
 const aSpec = specOf('barge') as BargeSpec;
 const leverAnswer = Math.round(lSpec.answer * 20) / 20;
 const wrongPivot = Math.abs(leverAnswer - -3.5) > 1.5 ? -3.5 : 3.5;
@@ -60,15 +62,10 @@ async function openEn(b: Browser, opts: { mobile?: boolean; settings?: Record<st
   return { ctx, page, errors };
 }
 const pipsUsed = async (p: Page) => /^(\d) of 3/.exec((await q(p, 'pips').getAttribute('aria-label')) ?? '')?.[1];
-async function setDials(p: Page, angles: number[]) {
-  for (let i = 1; i < angles.length; i++) {
-    await q(p, `dial-${i}`).locator('svg').focus();
-    for (let k = 0; k < angles[i] / 30; k++) await p.keyboard.press('ArrowRight');
-  }
-}
 async function solveLever(p: Page) { await q(p, 'lever-slider').fill(String(leverAnswer)); await q(p, 'lever-release').click(); await q(p, 'lever-final').waitFor(); }
 async function solveBridge(p: Page) { for (const i of bSpec.weak) await q(p, `bridge-m-${i}`).click(); await q(p, 'bridge-test').click(); await q(p, 'bridge-final').waitFor(); }
-async function solveEngine(p: Page) { await setDials(p, eSpec.answer); await q(p, 'engine-start').click(); await q(p, 'engine-final').waitFor(); }
+async function pickOrder(p: Page, order: number[]) { for (const c of order) await q(p, `crank-cyl-${c}`).click(); }
+async function solveCrank(p: Page) { await pickOrder(p, cBest); await q(p, 'crank-run').click(); await q(p, 'crank-final').waitFor(); }
 async function solveBarge(p: Page) { for (let i = 0; i < 4; i++) await q(p, `barge-tank-${i}`).fill(String(bargeAnswer[i])); await q(p, 'barge-flood').click(); await q(p, 'barge-final').waitFor(); }
 
 async function main() {
@@ -122,13 +119,15 @@ async function main() {
     for (let i = 0; i <= bSpec.budget; i++) await q(p, `bridge-m-${i}`).click();
     ok((await text(p, 'bridge-count')).startsWith(`Reinforced ${bSpec.budget} of ${bSpec.budget}`), 'capped'); await ctx.close();
   });
-  await t('engine: all cranks in line shakes (and unlocks the couple polygon); the balanced setting runs smooth', async () => {
-    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('engine')).click();
-    eq(await q(p, 'poly-couple-locked').count(), 1, 'locked at first');
-    await q(p, 'engine-start').click(); await q(p, 'engine-msg').waitFor(); ok((await text(p, 'engine-msg')).includes('shakes'), 'shakes');
-    eq(await q(p, 'poly-couple').count(), 1, 'unlocked'); eq(await pipsUsed(p), '1');
-    await p.waitForFunction(() => !(document.querySelector('[data-testid=engine-start]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
-    await solveEngine(p); ok((await text(p, 'engine-final')).includes('Smooth'), 'smooth'); eq(await q(p, 'poly-force').getAttribute('data-closed'), 'true', 'force polygon closed');
+  await t('crankshaft: an incomplete order is refused without using a guess; the naive order shakes; a balanced order runs smooth', async () => {
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('crankshaft')).click();
+    await q(p, 'crank-cyl-1').click(); await q(p, 'crank-run').click(); await q(p, 'crank-msg').waitFor();
+    eq(await pipsUsed(p), '0', 'a refused order is not a guess'); ok(!/hint/i.test(await text(p, 'crank-msg')), 'no hint');
+    await q(p, 'crank-reset').click(); eq(await text(p, 'crank-order'), 'Firing order: —', 'cleared');
+    await pickOrder(p, cPoor); await q(p, 'crank-run').click(); await q(p, 'crank-msg').waitFor();
+    ok(/shakes|thumps|buzzes|rocks/.test(await text(p, 'crank-msg')), 'physical outcome'); ok(/guess/.test(await text(p, 'crank-msg')), 'guesses left'); eq(await pipsUsed(p), '1', 'one guess used');
+    await p.waitForFunction(() => !(document.querySelector('[data-testid=crank-run]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
+    await q(p, 'crank-reset').click(); await solveCrank(p); ok((await text(p, 'crank-final')).includes('Smooth'), 'smooth'); eq(await q(p, tab('crankshaft')).getAttribute('data-state'), 'solved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('barge: an unballasted barge lists; the right ballast floats her level', async () => {
@@ -169,7 +168,7 @@ async function main() {
     const { ctx, page: p, errors } = await openEn(b);
     const solvers: Record<string, () => Promise<void>> = {
       waveform: async () => { await q(p, 'graph-input').fill(gSpec.answer); await q(p, 'graph-submit').click(); await q(p, 'graph-final').waitFor(); },
-      lever: () => solveLever(p), bridge: () => solveBridge(p), engine: () => solveEngine(p), barge: () => solveBarge(p),
+      lever: () => solveLever(p), bridge: () => solveBridge(p), crankshaft: () => solveCrank(p), barge: () => solveBarge(p),
     };
     for (const { def } of en.puzzles) { await solvers[def.id](); await q(p, 'ens-next').click(); }
     await q(p, 'ens-summary').waitFor(); ok(/^https?:\/\/[^/]+\/\?s=\d+\.[01]\.(auto|dark|light)\.[01]\.[01]$/.test((await q(p, 'ens-to-obscura').getAttribute('href')) ?? ''), 'results link to Obscura carries settings'); ok((await text(p, 'ens-points')).startsWith('500'), '500 points'); ok((await text(p, 'ens-squares')).includes('🟩🟩🟩🟩🟩') || (await text(p, 'ens-squares')).replace(/\s/g, '') === '🟩🟩🟩🟩🟩', 'all green');
@@ -194,8 +193,8 @@ async function main() {
   await t('Engineerle works on a phone-sized screen', async () => {
     const { ctx, page: p } = await openEn(b, { mobile: true });
     const w = await p.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]); ok(w[0] <= w[1] + 1, `no sideways scroll ${w}`);
-    await q(p, tab('engine')).click(); await q(p, 'engine-start').waitFor();
-    const w2 = await p.evaluate(() => [document.querySelector('.ens')!.scrollWidth, window.innerWidth]); ok(w2[0] <= w2[1] + 1, `no sideways scroll on the engine ${w2}`); await ctx.close();
+    await q(p, tab('crankshaft')).click(); await q(p, 'crank-run').waitFor();
+    const w2 = await p.evaluate(() => [document.querySelector('.ens')!.scrollWidth, window.innerWidth]); ok(w2[0] <= w2[1] + 1, `no sideways scroll on the crankshaft ${w2}`); await ctx.close();
   });
 
   console.log('\nSidebar, settings and the link to Obscura');

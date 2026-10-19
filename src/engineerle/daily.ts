@@ -5,7 +5,7 @@ import { pickDay } from './select';
 import type { GraphSpec } from './graph';
 import type { LeverSpec } from './lever';
 import type { BridgeSpec } from './truss';
-import type { CrankSpec } from './crank';
+import type { CrankshaftSpec } from './crankshaft';
 import type { BargeSpec } from './barge';
 
 export { MAX_ATTEMPTS, MAX_DAY_POINTS } from './scoring';
@@ -14,7 +14,7 @@ export { MAX_ATTEMPTS, MAX_DAY_POINTS } from './scoring';
 export const ENGINEERLE_EPOCH = '2026-10-19';
 
 /** Every puzzle's specification. Grows with the pool. */
-export type PuzzleSpec = GraphSpec | LeverSpec | BridgeSpec | CrankSpec | BargeSpec;
+export type PuzzleSpec = GraphSpec | LeverSpec | BridgeSpec | CrankshaftSpec | BargeSpec;
 
 export interface DailyPuzzle {
   def: PuzzleDef;
