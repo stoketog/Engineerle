@@ -92,14 +92,15 @@ async function main() {
     await solveLever(p); ok((await text(p, 'lever-final')).includes('Balanced'), 'balanced'); eq(await q(p, 'ens-tab-1').getAttribute('data-state'), 'solved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
-  await t('bridge: reinforcing the wrong members fails and flags what broke; the weak ones hold', async () => {
+  await t('bridge: reinforcing the wrong members fails without naming what broke or hinting; the weak ones hold', async () => {
     const { ctx, page: p, errors } = await openEn(b); await q(p, 'ens-tab-2').click();
     const wrong = Array.from({ length: bSpec.areas.length }, (_, i) => i).filter((i) => !bSpec.weak.includes(i)).slice(0, bSpec.budget);
     for (const i of wrong) await q(p, `bridge-m-${i}`).click();
     eq(await text(p, 'bridge-count').then((x) => x.startsWith(`Reinforced ${bSpec.budget} of ${bSpec.budget}`)), true, 'count');
     await q(p, 'bridge-test').click(); await q(p, 'bridge-msg').waitFor(); ok((await text(p, 'bridge-msg')).includes('came down'), 'collapsed');
-    eq(await pipsUsed(p), '1'); eq(await q(p, 'bridge-m-' + wrong[0]).getAttribute('data-hit'), 'false');
-    ok((await p.locator('[data-testid^=bridge-m-][data-hit=true]').count()) >= 1, 'a broken member is flagged');
+    eq(await pipsUsed(p), '1');
+    eq(await p.locator('[data-hit]').count(), 0, 'no member is flagged after a failure');
+    ok(!/hint|snapped|buckled/i.test(await text(p, 'bridge-msg')), 'the message names no member and gives no hint');
     await p.waitForFunction(() => !(document.querySelector('[data-testid=bridge-test]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
     for (const i of wrong) await q(p, `bridge-m-${i}`).click();
     await solveBridge(p); ok((await text(p, 'bridge-final')).includes('holds'), 'holds'); eq(await q(p, 'ens-tab-2').getAttribute('data-state'), 'solved');

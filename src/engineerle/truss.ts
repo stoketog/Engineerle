@@ -252,74 +252,302 @@ export function makeBridge(seed: number): BridgeSpec {
   return { kind: 'bridge', panels: 6, areas, truck, budget: weak.length, weak };
 }
 
-/* ───────────────────────────── the collapse ───────────────────────────── */
+/* ───────────────────────── the crossing, in time ─────────────────────────
+ *
+ * A large-displacement ("corotational") pin-jointed truss integrated in time with a fixed step.
+ *
+ *  - Each member is a spring along its current direction: axial force N = E A (L - L0) / L0, with L the
+ *    current length and L0 the length as built. Nothing is linearised, so a falling span keeps its geometry.
+ *  - Mass is lumped at the joints: half of each member's steel plus the dead load carried there.
+ *  - Damping is Rayleigh damping (mass part ALPHA, stiffness part BETA), about 5% of critical at the first mode.
+ *  - The truck is a moving force (its inertia is ignored, as in the usual moving-load model) whose position
+ *    depends only on the step count, so the result does not depend on the frame rate.
+ *  - A member whose elastic force passes its capacity (yield in tension, Euler buckling in compression) is
+ *    removed. Everything else carries on under the same integrator, which is the collapse.
+ *  - Time stepping is velocity Verlet (second order and symplectic), which conserves energy over long runs.
+ */
 
-export interface Collapse {
-  pos: Array<{ x: number; y: number }>;
-  step(dt: number): void;
-  alive: boolean[];
-  /** The river surface: nothing falls below this. */
-  floor: number;
+export const SIM_DT = 1 / 5000;
+const RHO = 7850; // kg/m³
+const ALPHA = 3; // 1/s, mass-proportional damping
+const BETA = 8e-4; // s, stiffness-proportional damping
+const LOAD_EVERY = 25; // steps between refreshes of the moving load (5 ms)
+
+export interface SimOptions {
+  /** Fixed step (s). */
+  dt?: number;
+  /** Rayleigh damping on (default) or off. */
+  damping?: boolean;
+  /** False leaves the truck off the bridge (only the bridge's own weight acts). */
+  truck?: boolean;
+  /** Truck speed in panels per second. */
+  speed?: number;
+  /** Where the front axle starts, in panels (negative = before the bridge). */
+  start?: number;
+  /** Nothing falls below this height. */
+  floor?: number;
 }
 
-/**
- * A Verlet particle model of the failed bridge: joints are particles, intact members are rigid links, the
- * broken ones are gone, and gravity does the rest.
- */
-export function startCollapse(t: Truss, broken: Set<number>, disp: number[], extra: Array<{ node: number; mass: number }> = [], floor = -14): Collapse {
-  const n = t.nodes.length;
-  const pos = t.nodes.map((p, i) => ({ x: p.x + disp[2 * i] * 30, y: p.y + disp[2 * i + 1] * 30 }));
-  const prev = pos.map((p) => ({ ...p }));
-  const mass = new Array<number>(n).fill(1);
-  for (const e of extra) mass[e.node] += e.mass;
-  const alive = t.members.map((_, i) => !broken.has(i));
-  const rest = t.members.map((m, i) => Math.hypot(t.nodes[m.b].x - t.nodes[m.a].x, t.nodes[m.b].y - t.nodes[m.a].y) + 0 * i);
-  const pinned = new Set([0]);
-  const roller = t.panels;
-  const c: Collapse = {
-    pos,
-    alive,
-    floor,
-    step(dt: number) {
-      const sub = 3;
-      const h = dt / sub;
-      for (let s = 0; s < sub; s++) {
-        for (let i = 0; i < n; i++) {
-          if (pinned.has(i)) continue;
-          const p = pos[i], q = prev[i];
-          const vx = (p.x - q.x) * 0.998, vy = (p.y - q.y) * 0.998;
-          q.x = p.x;
-          q.y = p.y;
-          p.x += vx;
-          p.y += vy - g * h * h;
-          if (i === roller) p.y = Math.max(p.y, t.nodes[roller].y - 0.0); // a roller bearing holds it only if the span still stands
-        }
-        for (let it = 0; it < 14; it++) {
-          t.members.forEach((m, k) => {
-            if (!alive[k]) return;
-            const a = pos[m.a], b = pos[m.b];
-            const dx = b.x - a.x, dy = b.y - a.y;
-            const d = Math.hypot(dx, dy) || 1e-9;
-            const diff = (d - rest[k]) / d;
-            const wa = pinned.has(m.a) ? 0 : 1 / mass[m.a], wb = pinned.has(m.b) ? 0 : 1 / mass[m.b];
-            const ws = wa + wb;
-            if (!ws) return;
-            a.x += (dx * diff * wa) / ws;
-            a.y += (dy * diff * wa) / ws;
-            b.x -= (dx * diff * wb) / ws;
-            b.y -= (dy * diff * wb) / ws;
-          });
-          pos.forEach((p, i) => {
-            if (p.y < floor) {
-              p.y = floor;
-              prev[i].x = p.x - (p.x - prev[i].x) * 0.3;
-            }
-          });
-          pos[0].x = t.nodes[0].x;
-          pos[0].y = t.nodes[0].y;
-        }
+export type FailureMode = 'snapped' | 'buckled';
+
+export class BridgeSim {
+  readonly t: Truss;
+  readonly areas: number[];
+  readonly truck: Truck;
+  readonly dt: number;
+  readonly speed: number;
+  readonly floor: number;
+  readonly L0: number[];
+  readonly alive: boolean[];
+  readonly broken = new Map<number, FailureMode>();
+  /** The members that gave way first (all in the same step); everything after is a consequence. */
+  firstFailure: number[] = [];
+  /** Highest utilisation each member has reached so far. */
+  readonly peak: number[];
+  /** Utilisation of each member right now. */
+  util: number[];
+  /** Axial force in each member right now (N, positive = tension; 0 once it has failed). */
+  force: number[];
+  /** Sim time at which the bridge first failed (s), or -1. */
+  failedAt = -1;
+  /** Steps taken. Everything depends on this and nothing else. */
+  steps = 0;
+  /** Front axle position in panels. Stops moving once the bridge has failed. */
+  u: number;
+  collapsed = false;
+
+  private readonly n: number;
+  private readonly rx: Float64Array;
+  private readonly ry: Float64Array;
+  private readonly x: Float64Array;
+  private readonly y: Float64Array;
+  private readonly vx: Float64Array;
+  private readonly vy: Float64Array;
+  private readonly mass: Float64Array;
+  private readonly ea: number[];
+  private readonly capT: number[];
+  private readonly capC: number[];
+  private readonly alpha: number;
+  private readonly beta: number;
+  private readonly withTruck: boolean;
+  private readonly u0: number;
+  private ext: number[];
+  private acc = 0;
+  private haveAccel = false;
+  private readonly fx: Float64Array;
+  private readonly fy: Float64Array;
+  private readonly ax: Float64Array;
+  private readonly ay: Float64Array;
+  private readonly equilibrium: number;
+
+  constructor(t: Truss, areasM2: number[], truck: Truck, opts: SimOptions = {}) {
+    this.t = t;
+    this.areas = areasM2;
+    this.truck = truck;
+    this.dt = opts.dt ?? SIM_DT;
+    this.withTruck = opts.truck !== false;
+    this.speed = opts.speed ?? (t.panels + 2 * truck.spacing + 1) / 6;
+    this.floor = opts.floor ?? -8.7;
+    const damping = opts.damping !== false;
+    this.alpha = damping ? ALPHA : 0;
+    this.beta = damping ? BETA : 0;
+    this.u0 = opts.start ?? -truck.spacing - 0.5;
+    this.u = this.withTruck ? this.u0 : -1e6;
+    const n = (this.n = t.nodes.length);
+    this.L0 = t.members.map((_, i) => memberLength(t, i));
+    this.alive = t.members.map(() => true);
+    this.peak = t.members.map(() => 0);
+    this.util = t.members.map(() => 0);
+    this.force = t.members.map(() => 0);
+    this.ea = t.members.map((_, i) => E * areasM2[i]);
+    this.capT = t.members.map((_, i) => capacity(areasM2[i], this.L0[i], false));
+    this.capC = t.members.map((_, i) => capacity(areasM2[i], this.L0[i], true));
+    this.rx = Float64Array.from(t.nodes.map((p) => p.x));
+    this.ry = Float64Array.from(t.nodes.map((p) => p.y));
+    this.x = Float64Array.from(this.rx);
+    this.y = Float64Array.from(this.ry);
+    this.vx = new Float64Array(n);
+    this.vy = new Float64Array(n);
+    this.fx = new Float64Array(n);
+    this.fy = new Float64Array(n);
+    this.ax = new Float64Array(n);
+    this.ay = new Float64Array(n);
+    // mass: dead load / g at each joint plus half of each member's steel
+    const dead = truckLoads(t, truck, -1e6);
+    this.mass = new Float64Array(n);
+    for (let i = 0; i < n; i++) this.mass[i] = -dead[2 * i + 1] / g;
+    t.members.forEach((m, i) => {
+      const half = (RHO * areasM2[i] * this.L0[i]) / 2;
+      this.mass[m.a] += half;
+      this.mass[m.b] += half;
+    });
+    // begin at static equilibrium under the bridge's own weight, so nothing rings at the start
+    const eq = solveTruss(t, areasM2, dead);
+    for (let i = 0; i < n; i++) {
+      this.x[i] += eq.disp[2 * i];
+      this.y[i] += eq.disp[2 * i + 1];
+    }
+    this.ext = this.loadsNow();
+    this.equilibrium = this.totalEnergy();
+  }
+
+  get time(): number {
+    return this.steps * this.dt;
+  }
+
+  private loadsNow(): number[] {
+    return truckLoads(this.t, this.truck, this.u);
+  }
+
+  /** Joint displacements from the shape as built: x then y for each joint, as `solveTruss` reports them. */
+  displacement(): number[] {
+    const d = new Array<number>(2 * this.n);
+    for (let i = 0; i < this.n; i++) {
+      d[2 * i] = this.x[i] - this.rx[i];
+      d[2 * i + 1] = this.y[i] - this.ry[i];
+    }
+    return d;
+  }
+
+  positions(): Array<{ x: number; y: number }> {
+    return Array.from({ length: this.n }, (_, i) => ({ x: this.x[i], y: this.y[i] }));
+  }
+
+  kineticEnergy(): number {
+    let k = 0;
+    for (let i = 0; i < this.n; i++) k += 0.5 * this.mass[i] * (this.vx[i] ** 2 + this.vy[i] ** 2);
+    return k;
+  }
+
+  /** Kinetic + strain energy minus the work potential of the (fixed) loads, measured from the shape as built. */
+  totalEnergy(): number {
+    let e = this.kineticEnergy();
+    this.t.members.forEach((m, i) => {
+      if (!this.alive[i]) return;
+      const ext = Math.hypot(this.x[m.b] - this.x[m.a], this.y[m.b] - this.y[m.a]) - this.L0[i];
+      e += (0.5 * this.ea[i] * ext * ext) / this.L0[i];
+    });
+    for (let i = 0; i < this.n; i++) e -= this.ext[2 * i] * (this.x[i] - this.rx[i]) + this.ext[2 * i + 1] * (this.y[i] - this.ry[i]);
+    return e;
+  }
+
+  /** Energy above the static equilibrium it started from. */
+  excitation(): number {
+    return this.totalEnergy() - this.equilibrium;
+  }
+
+  /** Push the deck into a half-sine bend of this amplitude (m), to give it something to ring with. */
+  pluck(amplitude: number) {
+    const total = this.t.panels * this.t.panel;
+    for (let i = 0; i < this.n; i++) this.y[i] += amplitude * Math.sin((Math.PI * this.rx[i]) / total);
+    this.haveAccel = false;
+  }
+
+  /** Move time forward. Whole fixed steps only; the remainder carries to the next call. */
+  advance(seconds: number) {
+    this.acc += seconds / this.dt;
+    const k = Math.floor(this.acc + 1e-9);
+    this.acc -= k;
+    for (let s = 0; s < k; s++) this.step();
+  }
+
+  /** Forces on every joint now (loads, members, damping) turned into accelerations; also tests every member for failure. */
+  private accelerations() {
+    const { t, n } = this;
+    const fx = this.fx, fy = this.fy;
+    for (let i = 0; i < n; i++) {
+      fx[i] = this.ext[2 * i];
+      fy[i] = this.ext[2 * i + 1];
+    }
+    let failed = false;
+    const now: number[] = [];
+    for (let k = 0; k < t.members.length; k++) {
+      if (!this.alive[k]) continue;
+      const m = t.members[k];
+      const dx = this.x[m.b] - this.x[m.a], dy = this.y[m.b] - this.y[m.a];
+      const L = Math.hypot(dx, dy);
+      const ex = dx / L, ey = dy / L;
+      const elastic = (this.ea[k] * (L - this.L0[k])) / this.L0[k];
+      const u = Math.abs(elastic) / (elastic < 0 ? this.capC[k] : this.capT[k]);
+      this.util[k] = u;
+      this.force[k] = elastic;
+      if (u > this.peak[k]) this.peak[k] = u;
+      if (u >= 1) {
+        this.alive[k] = false;
+        this.force[k] = 0;
+        this.broken.set(k, elastic >= 0 ? 'snapped' : 'buckled');
+        now.push(k);
+        failed = true;
+        continue;
       }
-    },
-  };
-  return c;
+      const rate = (this.vx[m.b] - this.vx[m.a]) * ex + (this.vy[m.b] - this.vy[m.a]) * ey;
+      const N = elastic + this.beta * (this.ea[k] / this.L0[k]) * rate;
+      fx[m.a] += N * ex;
+      fy[m.a] += N * ey;
+      fx[m.b] -= N * ex;
+      fy[m.b] -= N * ey;
+    }
+    if (failed && !this.collapsed) {
+      this.firstFailure = now;
+      this.failedAt = this.steps * this.dt;
+      // the truck stays where it was and its weight now rides on the joints beneath it
+      this.collapsed = true;
+      const withTruck = this.loadsNow();
+      const without = truckLoads(t, this.truck, -1e6);
+      for (let i = 0; i < n; i++) this.mass[i] += -(withTruck[2 * i + 1] - without[2 * i + 1]) / g;
+    }
+    for (let i = 0; i < n; i++) {
+      this.ax[i] = fx[i] / this.mass[i] - this.alpha * this.vx[i];
+      this.ay[i] = fy[i] / this.mass[i] - this.alpha * this.vy[i];
+    }
+    this.ax[0] = 0;
+    this.ay[0] = 0; // pin
+    this.ay[t.panels] = 0; // roller: holds the height, free to slide
+    this.haveAccel = true;
+  }
+
+  private kick(h: number) {
+    for (let i = 1; i < this.n; i++) {
+      this.vx[i] += this.ax[i] * h;
+      this.vy[i] += this.ay[i] * h;
+    }
+    this.vy[this.t.panels] = 0;
+  }
+
+  /** One velocity-Verlet step (second order, symplectic): half kick, drift, new forces, half kick. */
+  private step() {
+    const { dt, n } = this;
+    if (this.withTruck && !this.collapsed) this.u = this.u0 + this.speed * this.steps * dt;
+    if (this.steps % LOAD_EVERY === 0) {
+      this.ext = this.loadsNow();
+      this.haveAccel = false;
+    }
+    if (!this.haveAccel) this.accelerations();
+    this.kick(dt / 2);
+    for (let i = 1; i < n; i++) {
+      this.x[i] += this.vx[i] * dt;
+      this.y[i] += this.vy[i] * dt;
+      if (this.y[i] < this.floor) {
+        this.y[i] = this.floor;
+        if (this.vy[i] < 0) this.vy[i] *= -0.15;
+        this.vx[i] *= 0.8;
+      }
+    }
+    this.accelerations();
+    this.kick(dt / 2);
+    this.steps++;
+  }
+}
+
+/** Run a pass and sample it: `samples` snapshots, `dt` seconds apart, from the start of the crossing. */
+export function dynamicResponse(t: Truss, areasM2: number[], truck: Truck, dt: number, samples: number) {
+  const sim = new BridgeSim(t, areasM2, truck);
+  const time: number[] = [], disp: number[][] = [], maxUtil: number[] = [];
+  for (let k = 0; k < samples; k++) {
+    sim.advance(dt);
+    time.push(sim.time);
+    disp.push(sim.displacement());
+    maxUtil.push(Math.max(...sim.util));
+  }
+  return { time, disp, maxUtil };
 }

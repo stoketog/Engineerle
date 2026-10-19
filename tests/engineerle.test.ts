@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { parseExpr } from '@/engineerle/expr';
 import { makeGraph, checkGraph, graphFn, type GraphSpec } from '@/engineerle/graph';
 import { makeLever, balancePoint, isLevel, settleAngle, tolerance, moment } from '@/engineerle/lever';
-import { buildTruss, solveTruss, truckLoads, makeBridge, envelope, memberLength, capacity, UPGRADE, startCollapse } from '@/engineerle/truss';
+import { buildTruss, solveTruss, truckLoads, makeBridge, envelope, memberLength, capacity, UPGRADE } from '@/engineerle/truss';
 import { makeEngine, isSmooth, forceSum, coupleSum, solutions as crankSolutions, unbalance } from '@/engineerle/crank';
 import { makeBarge, bargeState, isSolved, solutions as bargeSolutions, withinLimits } from '@/engineerle/barge';
 import { getEngineerleDaily, PUZZLES, engineerleNumber, ENGINEERLE_EPOCH } from '@/engineerle/daily';
@@ -123,15 +123,7 @@ test('generated bridges fail exactly at the weak members and are fixed by upgrad
     assert.ok(envelope(t, wrong, b.truck).some((u) => u > 1));
   }
 });
-test('the collapse simulation keeps members at length and lets the broken span fall', () => {
-  const b = makeBridge(2026);
-  const t = buildTruss(b.panels);
-  const c = startCollapse(t, new Set(b.weak), new Array(t.nodes.length * 2).fill(0));
-  for (let i = 0; i < 240; i++) c.step(1 / 60);
-  assert.ok(c.pos.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)));
-  assert.ok(c.pos.some((p, i) => p.y < t.nodes[i].y - 0.5), 'something fell');
-  assert.ok(c.pos.every((p) => p.y >= c.floor - 1e-6));
-});
+/* the collapse is now part of BridgeSim and is tested in tests/truss.test.ts */
 
 console.log('Puzzle 4: the engine');
 test('perfect balance needs both the force sum and the couple to vanish', () => {
