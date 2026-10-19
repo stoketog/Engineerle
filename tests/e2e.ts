@@ -14,6 +14,7 @@ import type { BridgeSpec } from '@/engineerle/truss';
 import { bestResiduals, type CrankshaftSpec } from '@/engineerle/crankshaft';
 import { dialValues, evaluate as circuitEval, type CircuitSpec } from '@/engineerle/circuit';
 import { evaluate as powerEval, type PowerlineSpec } from '@/engineerle/powerline';
+import { evaluate as rcEval, R_VALUES, C_VALUES, type FilterSpec } from '@/engineerle/rcfilter';
 
 const PROD = 'http://localhost:4182/';
 const servers: ChildProcess[] = [];
@@ -39,12 +40,12 @@ const dayWith = (id: string) => {
   for (let i = 0; i < 400; i++) { const d = new Date(Date.UTC(2026, 10, 5 + i)).toISOString().slice(0, 10); if (getEngineerleDaily(d).puzzles.some((x) => x.def.id === id)) return d; }
   throw new Error(`no day sets ${id}`);
 };
-let pSpec!: PowerlineSpec, gSpec!: GraphSpec, lSpec!: LeverSpec, bSpec!: BridgeSpec, cSpec!: CrankshaftSpec, aSpec!: BargeSpec, rSpec!: CircuitSpec;
+let fSpec!: FilterSpec, pSpec!: PowerlineSpec, gSpec!: GraphSpec, lSpec!: LeverSpec, bSpec!: BridgeSpec, cSpec!: CrankshaftSpec, aSpec!: BargeSpec, rSpec!: CircuitSpec;
 let cBest: number[] = [], cPoor: number[] = [], leverAnswer = 0, wrongPivot = 0, bargeAnswer: number[] = [];
 function useDay(day: string) {
   DAY = day; en = getEngineerleDaily(day);
   gSpec = specOf('waveform') as GraphSpec; lSpec = specOf('lever') as LeverSpec; bSpec = specOf('bridge') as BridgeSpec;
-  cSpec = specOf('crankshaft') as CrankshaftSpec; aSpec = specOf('barge') as BargeSpec; rSpec = specOf('resistor') as CircuitSpec; pSpec = specOf('powerline') as PowerlineSpec;
+  cSpec = specOf('crankshaft') as CrankshaftSpec; aSpec = specOf('barge') as BargeSpec; rSpec = specOf('resistor') as CircuitSpec; pSpec = specOf('powerline') as PowerlineSpec; fSpec = specOf('rcfilter') as FilterSpec;
   if (lSpec) { leverAnswer = Math.round(lSpec.answer * 20) / 20; wrongPivot = Math.abs(leverAnswer - -3.5) > 1.5 ? -3.5 : 3.5; }
   if (cSpec) { cBest = bestResiduals(cSpec).orders[0]; cPoor = Array.from({ length: cSpec.n }, (_, i) => i + 1); }
   if (aSpec) bargeAnswer = bargeSolutions(aSpec, 10, 1)[0];
@@ -82,6 +83,14 @@ async function solveResistor(p: Page) {
 async function solvePower(p: Page) {
   const r = pSpec.ratios.find((x) => powerEval(pSpec, x).solved)!;
   await q(p, `power-ratio-${r}`).click(); await q(p, 'power-run').click(); await q(p, 'power-final').waitFor();
+}
+function rcSolution(): [number, number] {
+  for (let i = 0; i < R_VALUES.length; i++) for (let j = 0; j < C_VALUES.length; j++) if (rcEval(fSpec, R_VALUES[i], C_VALUES[j]).solved) return [i, j];
+  throw new Error('no RC solution');
+}
+async function solveRc(p: Page) {
+  const [i, j] = rcSolution();
+  await q(p, 'rc-r').fill(String(i)); await q(p, 'rc-c').fill(String(j)); await q(p, 'rc-run').click(); await q(p, 'rc-final').waitFor();
 }
 async function solveBarge(p: Page) { for (let i = 0; i < 4; i++) await q(p, `barge-tank-${i}`).fill(String(bargeAnswer[i])); await q(p, 'barge-flood').click(); await q(p, 'barge-final').waitFor(); }
 
@@ -178,6 +187,16 @@ async function main() {
     await solvePower(p); ok((await text(p, 'power-final')).includes('Solved'), 'solved'); eq(await q(p, tab('powerline')).getAttribute('data-state'), 'solved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
+  await t('RC filter: the first dial position fails and reports the dB, the right pair solves', async () => {
+    useDay(dayWith('rcfilter'));
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('rcfilter')).click();
+    await q(p, 'rc-scope').waitFor(); await q(p, 'rc-mini').waitFor();
+    await q(p, 'rc-r').fill('0'); await q(p, 'rc-c').fill('0'); await q(p, 'rc-run').click(); await q(p, 'rc-msg').waitFor();
+    ok(/dB/.test(await text(p, 'rc-msg')) && /guess/.test(await text(p, 'rc-msg')), 'dB and guesses left'); ok(!/hint/i.test(await text(p, 'rc-msg')), 'no hint');
+    eq(await pipsUsed(p), '1', 'one guess used'); ok((await text(p, 'rc-result')).includes('dB'), 'result readout');
+    await solveRc(p); ok((await text(p, 'rc-final')).includes('Solved'), 'solved'); eq(await q(p, tab('rcfilter')).getAttribute('data-state'), 'solved');
+    eq(errors.length, 0, errors.join('|')); await ctx.close();
+  });
   await t('barge: an unballasted barge lists; the right ballast floats her level', async () => {
     useDay(dayWith('barge'));
     const { ctx, page: p, errors } = await openEn(b); await q(p, tab('barge')).click();
@@ -222,7 +241,7 @@ async function main() {
     const { ctx, page: p, errors } = await openEn(b);
     const solvers: Record<string, () => Promise<void>> = {
       waveform: async () => { await q(p, 'graph-input').fill(gSpec.answer); await q(p, 'graph-submit').click(); await q(p, 'graph-final').waitFor(); },
-      lever: () => solveLever(p), bridge: () => solveBridge(p), crankshaft: () => solveCrank(p), barge: () => solveBarge(p), resistor: () => solveResistor(p), powerline: () => solvePower(p),
+      lever: () => solveLever(p), bridge: () => solveBridge(p), crankshaft: () => solveCrank(p), barge: () => solveBarge(p), resistor: () => solveResistor(p), powerline: () => solvePower(p), rcfilter: () => solveRc(p),
     };
     for (const { def } of en.puzzles) { await solvers[def.id](); await q(p, 'ens-next').click(); }
     await q(p, 'ens-summary').waitFor(); ok(/^https?:\/\/[^/]+\/\?s=\d+\.[01]\.(auto|dark|light)\.[01]\.[01]$/.test((await q(p, 'ens-to-obscura').getAttribute('href')) ?? ''), 'results link to Obscura carries settings'); ok((await text(p, 'ens-points')).startsWith('500'), '500 points'); ok((await text(p, 'ens-squares')).includes('🟩🟩🟩🟩🟩') || (await text(p, 'ens-squares')).replace(/\s/g, '') === '🟩🟩🟩🟩🟩', 'all green');

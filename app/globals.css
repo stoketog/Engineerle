@@ -572,3 +572,7 @@ a.ens-ghost { display: inline-flex; align-items: center; text-decoration: none; 
 @keyframes ens-flow { to { stroke-dashoffset: -22; } }
 .ens-flow { animation: ens-flow var(--flow, 1.5s) linear infinite; }
 :root[data-motion="reduced"] .ens-flow { animation: none; }
+
+@keyframes ens-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.ens-draw { animation: ens-draw 1.4s ease-out forwards; }
+:root[data-motion="reduced"] .ens-draw { animation: none; }
