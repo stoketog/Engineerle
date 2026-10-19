@@ -74,11 +74,13 @@ async function main() {
   const b = await chromium.launch();
 
   console.log('Engineerle');
-  await t('curve: a wrong equation costs a guess and says only how many are left, an unreadable one is free, the right one solves', async () => {
+  await t('scope: a wrong equation costs a guess and says only how many are left, an unreadable one is free, the right one solves', async () => {
     const { ctx, page: p, errors } = await openEn(b); await q(p, tab('waveform')).click();
-    await q(p, 'graph-input').fill('x +'); await q(p, 'graph-submit').click(); await q(p, 'graph-msg').waitFor();
+    ok(/V\/div/.test(await text(p, 'scope-scales')) && /s\/div/.test(await text(p, 'scope-scales')), 'scope scales shown');
+    await q(p, 'graph-input').fill('1/0'); await q(p, 'graph-submit').click(); await q(p, 'graph-msg').waitFor(); eq(await pipsUsed(p), '0', '1/0 is refused');
+    await q(p, 'graph-input').fill('t +'); await q(p, 'graph-submit').click(); await p.waitForFunction(() => document.querySelector('[data-testid=graph-msg]')?.textContent?.includes('guess'));
     ok((await text(p, 'graph-msg')).includes("didn't use up a guess"), 'free'); eq(await pipsUsed(p), '0', 'no guess used');
-    await q(p, 'graph-input').fill('x^2'); await q(p, 'graph-submit').click();
+    await q(p, 'graph-input').fill('2*sin(2*pi*100*t)'); await q(p, 'graph-submit').click();
     await p.waitForFunction(() => document.querySelector('[data-testid=graph-msg]')?.textContent?.includes('guesses left'));
     ok(!/hint/i.test(await text(p, 'graph-msg')), 'no hint');
     eq(await pipsUsed(p), '1', 'one guess used');
@@ -87,9 +89,9 @@ async function main() {
     await p.reload(); await q(p, tab('waveform')).waitFor(); eq(await q(p, tab('waveform')).getAttribute('data-state'), 'solved', 'saved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
-  await t('three wrong curves end the puzzle and show the answer', async () => {
+  await t('three wrong signals end the puzzle and show the answer', async () => {
     const { ctx, page: p } = await openEn(b); await q(p, tab('waveform')).click();
-    for (const guess of ['x', '2x', '3x']) { await q(p, 'graph-input').fill(guess); await q(p, 'graph-submit').click(); await p.waitForTimeout(150); }
+    for (const guess of ['1', '2', '3']) { await q(p, 'graph-input').fill(guess); await q(p, 'graph-submit').click(); await p.waitForTimeout(150); }
     await q(p, 'graph-final').waitFor(); ok((await text(p, 'graph-final')).includes('Out of guesses'), 'out'); ok((await text(p, 'graph-final')).includes(gSpec.answer.replace(/\s/g, '')) || (await text(p, 'graph-final')).includes(gSpec.answer), 'answer shown');
     eq(await q(p, tab('waveform')).getAttribute('data-state'), 'failed', 'tab'); await ctx.close();
   });

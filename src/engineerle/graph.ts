@@ -3,16 +3,19 @@ import { parseExpr, sample, type Fn } from './expr';
 
 /** Puzzle 1: read the equation off the graph. */
 
-export type GraphFamily = 'quadratic' | 'cubic' | 'sine' | 'exponential' | 'rational' | 'abs-shift';
+export type GraphFamily = 'quadratic' | 'cubic' | 'sine' | 'exponential' | 'rational' | 'abs-shift' | 'waveform';
 
 export interface GraphSpec {
-  kind: 'graph';
+  /** 'waveform' is the oscilloscope version: the variable is t (seconds) and the output is volts. */
+  kind: 'graph' | 'waveform';
   family: GraphFamily;
   /** Coefficients, meaning depends on the family (see `graphFn`). */
   c: number[];
   /** The answer as the setter would write it (shown on a miss, never to be matched literally). */
   answer: string;
   view: { xmin: number; xmax: number; ymin: number; ymax: number };
+  /** Oscilloscope settings: volts and seconds per division (waveform only). */
+  scope?: { vdiv: number; tdiv: number };
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(Number(n.toFixed(3))));
@@ -27,6 +30,7 @@ export function graphFn(s: GraphSpec): Fn {
     case 'exponential': return (x) => c[0] * c[1] ** x + c[2];
     case 'rational': return (x) => c[0] / (x - c[1]) + c[2];
     case 'abs-shift': return (x) => c[0] * Math.abs(x - c[1]) + c[2];
+    case 'waveform': return (t) => c[0] * Math.sin(2 * Math.PI * c[1] * t + c[2]) + c[3];
   }
 }
 
@@ -94,6 +98,42 @@ export function makeGraph(seed: number): GraphSpec {
   return { kind: 'graph', family, c, answer, view };
 }
 
+const SERIES = [1, 2, 5];
+/** The 1-2-5 values (…, 0.1, 0.2, 0.5, 1, 2, 5, 10, …) a scope's knobs click through. */
+function seriesBetween(lo: number, hi: number, pickLargest: boolean): number {
+  const all: number[] = [];
+  for (let e = -9; e <= 4; e++) for (const m of SERIES) all.push(m * 10 ** e);
+  const ok = all.filter((v) => v >= lo * (1 - 1e-9) && v <= hi * (1 + 1e-9));
+  return pickLargest ? ok[ok.length - 1] : ok[0];
+}
+
+const WAVE_FREQS = [50, 80, 100, 125, 200, 250, 400, 500, 800, 1000, 1250, 2000, 2500, 4000, 5000];
+
+/** Puzzle 1 as an oscilloscope: read A, f, phase and offset off the trace and write v(t) = A sin(2 pi f t + p) + c. */
+export function makeWaveform(seed: number): GraphSpec {
+  const r = rng(seed);
+  const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)];
+  const A = (1 + Math.floor(r() * 10)) / 2; // 0.5 to 5 V
+  const f = pick(WAVE_FREQS);
+  const deg = 15 * Math.floor(r() * 24);
+  let off = 0;
+  if (r() < 0.5) off = (r() < 0.5 ? -1 : 1) * (1 + Math.floor(r() * 4)) / 2; // ±0.5 to ±2 V
+  // volts per division: the smallest knob setting that keeps the trace on the screen (±4 divisions)
+  const vdiv = seriesBetween((A + Math.abs(off)) / 3.8, 100, false);
+  // seconds per division: the longest setting that still shows two or more cycles across ten divisions
+  const tdiv = seriesBetween(0.2 / f, 0.5 / f, true);
+  const sign = off < 0 ? ` - ${fmt(-off)}` : off > 0 ? ` + ${fmt(off)}` : '';
+  const answer = `${fmt(A)}*sin(2*pi*${f}*t${deg ? ` + ${deg}*deg` : ''})${sign}`;
+  return {
+    kind: 'waveform',
+    family: 'waveform',
+    c: [A, f, (deg * Math.PI) / 180, off],
+    answer,
+    view: { xmin: 0, xmax: 10 * tdiv, ymin: -4 * vdiv, ymax: 4 * vdiv },
+    scope: { vdiv, tdiv },
+  };
+}
+
 export interface GraphVerdict {
   ok: boolean;
   /** Share of the sampled graph the answer lies on (0–1). */
@@ -106,15 +146,16 @@ export interface GraphVerdict {
 export function checkGraph(spec: GraphSpec, text: string): GraphVerdict {
   let f: Fn;
   try {
-    f = parseExpr(text);
+    f = parseExpr(text, spec.kind === 'waveform' ? 't' : 'x');
   } catch (e) {
     return { ok: false, match: 0, error: (e as Error).message };
   }
   const t = graphFn(spec);
   const { xmin, xmax, ymin, ymax } = spec.view;
   const tol = 0.012 * (ymax - ymin);
-  const N = 81;
+  const N = spec.kind === 'waveform' ? 241 : 81;
   const a = sample(t, xmin, xmax, N), b = sample(f, xmin, xmax, N);
+  if (b.every((v) => Number.isNaN(v))) return { ok: false, match: 0, error: 'That has no value anywhere on the screen' };
   let seen = 0, good = 0;
   for (let i = 0; i < N; i++) {
     if (Number.isNaN(a[i])) continue; // the target is undefined here (an asymptote)

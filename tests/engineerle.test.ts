@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { parseExpr } from '@/engineerle/expr';
-import { makeGraph, checkGraph, graphFn, type GraphSpec } from '@/engineerle/graph';
+import { makeGraph, makeWaveform, checkGraph, graphFn, type GraphSpec } from '@/engineerle/graph';
 import { makeLever, balancePoint, isLevel, settleAngle, tolerance, moment } from '@/engineerle/lever';
 import { buildTruss, solveTruss, truckLoads, makeBridge, envelope, capacity, UPGRADE, startCollapse, stepCollapse } from '@/engineerle/truss';
 import { makeBarge, bargeState, isSolved, solutions as bargeSolutions, withinLimits } from '@/engineerle/barge';
@@ -52,6 +52,70 @@ test('graph generation is deterministic and varied', () => {
   assert.ok(new Set(Array.from({ length: 30 }, (_, i) => makeGraph(i * 977).family)).size >= 4);
   const g = makeGraph(12);
   assert.ok(Number.isFinite(graphFn(g)(0)) || g.family === 'rational');
+});
+
+console.log('Puzzle 1b: the oscilloscope waveform');
+const wave = (w: GraphSpec, o: { A?: number; f?: number; deg?: number; c?: number } = {}) => {
+  const [A, f, p, c] = w.c;
+  return `${o.A ?? A}*sin(2*pi*${o.f ?? f}*t + ${o.deg ?? Math.round((p * 180) / Math.PI)}*deg) + ${o.c ?? c}`;
+};
+test('a waveform is A sin(2 pi f t + p) + c with the stated ranges, and fits the screen', () => {
+  const oneTwoFive = (v: number) => [1, 2, 5].some((m) => Math.abs(Math.log10(v / m) - Math.round(Math.log10(v / m))) < 1e-9);
+  for (let s = 1; s <= 500; s++) {
+    const w = makeWaveform(s * 97);
+    assert.equal(w.kind, 'waveform');
+    const [A, f, p, c] = w.c;
+    assert.ok(A >= 0.5 && A <= 5 && Math.abs(A * 2 - Math.round(A * 2)) < 1e-9, `A ${A}`);
+    assert.ok(f >= 50 && f <= 5000, `f ${f}`);
+    const deg = (p * 180) / Math.PI;
+    assert.ok(Math.abs(deg / 15 - Math.round(deg / 15)) < 1e-9, `phase ${deg}`);
+    assert.ok(c === 0 || Math.abs(c * 2 - Math.round(c * 2)) < 1e-9, `offset ${c}`);
+    const sc = w.scope!;
+    assert.ok(oneTwoFive(sc.vdiv) && oneTwoFive(sc.tdiv), `1-2-5 scales ${sc.vdiv} ${sc.tdiv}`);
+    assert.ok(A + Math.abs(c) <= 3.8 * sc.vdiv, 'the trace fits vertically');
+    const cycles = 10 * sc.tdiv * f;
+    assert.ok(cycles >= 2 - 1e-9 && cycles <= 5 + 1e-9, `cycles on screen ${cycles}`);
+    assert.deepEqual(w.view, { xmin: 0, xmax: 10 * sc.tdiv, ymin: -4 * sc.vdiv, ymax: 4 * sc.vdiv });
+  }
+});
+test('the setter\'s answer solves every waveform, in the forms people write', () => {
+  for (let s = 1; s <= 500; s++) {
+    const w = makeWaveform(s * 131);
+    assert.ok(checkGraph(w, w.answer).ok, `${w.answer}`);
+    assert.ok(checkGraph(w, wave(w)).ok, wave(w));
+    const [A, f, p, c] = w.c;
+    assert.ok(checkGraph(w, `${A} sin(${p} + 2 pi ${f} t) + ${c}`).ok, 'phase first, radians');
+    assert.ok(checkGraph(w, `v(t) = ${c} + ${A}*sin(2*π*${f}*t + ${p})`).ok, 'v(t) = and π');
+  }
+});
+test('a phase 15 degrees out, a wrong amplitude, frequency or offset do not solve it', () => {
+  for (let s = 1; s <= 200; s++) {
+    const w = makeWaveform(s * 71);
+    const [A, f, p, c] = w.c;
+    const deg = Math.round((p * 180) / Math.PI);
+    assert.ok(!checkGraph(w, wave(w, { deg: deg + 15 })).ok, `+15: ${w.answer}`);
+    assert.ok(!checkGraph(w, wave(w, { deg: deg - 15 })).ok, `-15: ${w.answer}`);
+    assert.ok(!checkGraph(w, wave(w, { A: A + 0.5 })).ok, 'amplitude');
+    assert.ok(!checkGraph(w, wave(w, { f: f * 1.1 })).ok, 'frequency +10%');
+    assert.ok(!checkGraph(w, wave(w, { c: c + 0.5 })).ok, 'offset');
+  }
+});
+test('unreadable or meaningless input is refused (no guess used)', () => {
+  const w = makeWaveform(5);
+  for (const bad of ['', '   ', 't +', '1/0', 'sin(', 'x', 'ln(-1)']) {
+    const v = checkGraph(w, bad);
+    assert.equal(v.ok, false, bad);
+    assert.ok(typeof v.error === 'string' && v.error.length > 0, `refused: "${bad}"`);
+  }
+  assert.equal(checkGraph(w, '1').error, undefined, 'a constant is a wrong answer, not a refusal');
+});
+test('the parser knows deg and takes t as the variable only when told to', () => {
+  near(parseExpr('90 deg')(0), Math.PI / 2, 1e-12);
+  near(parseExpr('sin(30 deg)')(0), 0.5, 1e-12);
+  near(parseExpr('2 pi t', 't')(0.25), Math.PI / 2, 1e-12);
+  near(parseExpr('tan(t)', 't')(0.5), Math.tan(0.5), 1e-12);
+  assert.throws(() => parseExpr('t'), /Unknown/);
+  assert.throws(() => parseExpr('x', 't'), /Unknown/);
 });
 
 console.log('Puzzle 2: the lever');

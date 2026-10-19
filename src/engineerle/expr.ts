@@ -11,7 +11,7 @@ const FUNCS: Record<string, (v: number) => number> = {
   sin: Math.sin, cos: Math.cos, tan: Math.tan, asin: Math.asin, acos: Math.acos, atan: Math.atan,
   exp: Math.exp, ln: Math.log, log: Math.log10, sqrt: Math.sqrt, abs: Math.abs, cbrt: Math.cbrt, sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
 };
-const CONSTS: Record<string, number> = { pi: Math.PI, e: Math.E };
+const CONSTS: Record<string, number> = { pi: Math.PI, e: Math.E, deg: Math.PI / 180 };
 
 const SUPERSCRIPT: Record<string, string> = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9', '⁻': '-' };
 
@@ -19,12 +19,12 @@ function normalise(src: string): string {
   let s = src.toLowerCase().trim();
   s = s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]+/g, (m) => '^(' + [...m].map((c) => SUPERSCRIPT[c]).join('') + ')');
   s = s.replace(/[×·∙]/g, '*').replace(/÷/g, '/').replace(/[−–—]/g, '-').replace(/π/g, 'pi').replace(/√/g, 'sqrt').replace(/\*\*/g, '^').replace(/\s+/g, ' ');
-  // drop a leading "y =" or "f(x) ="
-  s = s.replace(/^\s*(y|f\s*\(\s*x\s*\)|g\s*\(\s*x\s*\))\s*=\s*/, '');
+  // drop a leading "y =", "f(x) =" or "v(t) ="
+  s = s.replace(/^\s*(y|v|[fgv]\s*\(\s*[xt]\s*\))\s*=\s*/, '');
   return s;
 }
 
-function tokenise(s: string): Tok[] {
+function tokenise(s: string, variable: string): Tok[] {
   const out: Tok[] = [];
   let i = 0;
   while (i < s.length) {
@@ -45,7 +45,7 @@ function tokenise(s: string): Tok[] {
       let word = s.slice(i, j);
       // "2xsin" style runs: split a run of letters into known pieces (xx, xsin(x), xe, pix)
       while (word.length) {
-        const known = [...Object.keys(FUNCS), ...Object.keys(CONSTS), 'x'].sort((a, b) => b.length - a.length).find((k) => word.startsWith(k));
+        const known = [...Object.keys(FUNCS), ...Object.keys(CONSTS), variable].sort((a, b) => b.length - a.length).find((k) => word.startsWith(k));
         if (!known) throw new Error(`Unknown "${word}"`);
         out.push({ t: 'id', v: known });
         word = word.slice(known.length);
@@ -59,9 +59,12 @@ function tokenise(s: string): Tok[] {
   return out;
 }
 
-/** Parse an expression in x. Throws an Error with a short, readable message when it can't be read. */
-export function parseExpr(src: string): Fn {
-  const toks = tokenise(normalise(src));
+/**
+ * Parse an expression in one variable (x, or t for the oscilloscope puzzle). Throws an Error with a short, readable
+ * message when it can't be read. `deg` is the constant pi/180, so "30 deg" is thirty degrees in radians.
+ */
+export function parseExpr(src: string, variable: 'x' | 't' = 'x'): Fn {
+  const toks = tokenise(normalise(src), variable);
   if (!toks.length) throw new Error('Type an equation');
   let p = 0;
   const peek = () => toks[p];
@@ -131,7 +134,7 @@ export function parseExpr(src: string): Fn {
       }
       throw new Error(`Unexpected "${k.v}"`);
     }
-    if (k.v === 'x') return (x) => x;
+    if (k.v === variable) return (x) => x;
     if (k.v in CONSTS) return () => CONSTS[k.v];
     const fn = FUNCS[k.v];
     if (!fn) throw new Error(`Unknown "${k.v}"`);
