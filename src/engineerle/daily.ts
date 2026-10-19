@@ -12,6 +12,7 @@ import type { PowerlineSpec } from './powerline';
 import type { FilterSpec } from './rcfilter';
 import type { OpampSpec } from './opamp';
 import type { RocketSpec } from './rocket';
+import type { OrbitSpec } from './orbit';
 
 export { MAX_ATTEMPTS, MAX_DAY_POINTS } from './scoring';
 
@@ -19,7 +20,7 @@ export { MAX_ATTEMPTS, MAX_DAY_POINTS } from './scoring';
 export const ENGINEERLE_EPOCH = '2026-10-19';
 
 /** Every puzzle's specification. Grows with the pool. */
-export type PuzzleSpec = GraphSpec | LeverSpec | BridgeSpec | CrankshaftSpec | BargeSpec | CircuitSpec | PowerlineSpec | FilterSpec | OpampSpec | RocketSpec;
+export type PuzzleSpec = GraphSpec | LeverSpec | BridgeSpec | CrankshaftSpec | BargeSpec | CircuitSpec | PowerlineSpec | FilterSpec | OpampSpec | RocketSpec | OrbitSpec;
 
 export interface DailyPuzzle {
   def: PuzzleDef;

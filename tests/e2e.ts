@@ -14,6 +14,7 @@ import type { BridgeSpec } from '@/engineerle/truss';
 import { bestResiduals, type CrankshaftSpec } from '@/engineerle/crankshaft';
 import { dialValues, evaluate as circuitEval, type CircuitSpec } from '@/engineerle/circuit';
 import { evaluate as powerEval, type PowerlineSpec } from '@/engineerle/powerline';
+import { hohmann, type OrbitSpec } from '@/engineerle/orbit';
 import { evaluate as rkEval, bestSplit, type RocketSpec } from '@/engineerle/rocket';
 import { evaluate as opEval, RF_VALUES, RG_VALUES, type OpampSpec } from '@/engineerle/opamp';
 import { evaluate as rcEval, R_VALUES, C_VALUES, type FilterSpec } from '@/engineerle/rcfilter';
@@ -42,12 +43,12 @@ const dayWith = (id: string) => {
   for (let i = 0; i < 400; i++) { const d = new Date(Date.UTC(2026, 10, 5 + i)).toISOString().slice(0, 10); if (getEngineerleDaily(d).puzzles.some((x) => x.def.id === id)) return d; }
   throw new Error(`no day sets ${id}`);
 };
-let kSpec!: RocketSpec, oSpec!: OpampSpec, fSpec!: FilterSpec, pSpec!: PowerlineSpec, gSpec!: GraphSpec, lSpec!: LeverSpec, bSpec!: BridgeSpec, cSpec!: CrankshaftSpec, aSpec!: BargeSpec, rSpec!: CircuitSpec;
+let xSpec!: OrbitSpec, kSpec!: RocketSpec, oSpec!: OpampSpec, fSpec!: FilterSpec, pSpec!: PowerlineSpec, gSpec!: GraphSpec, lSpec!: LeverSpec, bSpec!: BridgeSpec, cSpec!: CrankshaftSpec, aSpec!: BargeSpec, rSpec!: CircuitSpec;
 let cBest: number[] = [], cPoor: number[] = [], leverAnswer = 0, wrongPivot = 0, bargeAnswer: number[] = [];
 function useDay(day: string) {
   DAY = day; en = getEngineerleDaily(day);
   gSpec = specOf('waveform') as GraphSpec; lSpec = specOf('lever') as LeverSpec; bSpec = specOf('bridge') as BridgeSpec;
-  cSpec = specOf('crankshaft') as CrankshaftSpec; aSpec = specOf('barge') as BargeSpec; rSpec = specOf('resistor') as CircuitSpec; pSpec = specOf('powerline') as PowerlineSpec; fSpec = specOf('rcfilter') as FilterSpec; oSpec = specOf('opamp') as OpampSpec; kSpec = specOf('rocket') as RocketSpec;
+  cSpec = specOf('crankshaft') as CrankshaftSpec; aSpec = specOf('barge') as BargeSpec; rSpec = specOf('resistor') as CircuitSpec; pSpec = specOf('powerline') as PowerlineSpec; fSpec = specOf('rcfilter') as FilterSpec; oSpec = specOf('opamp') as OpampSpec; kSpec = specOf('rocket') as RocketSpec; xSpec = specOf('orbit') as OrbitSpec;
   if (lSpec) { leverAnswer = Math.round(lSpec.answer * 20) / 20; wrongPivot = Math.abs(leverAnswer - -3.5) > 1.5 ? -3.5 : 3.5; }
   if (cSpec) { cBest = bestResiduals(cSpec).orders[0]; cPoor = Array.from({ length: cSpec.n }, (_, i) => i + 1); }
   if (aSpec) bargeAnswer = bargeSolutions(aSpec, 10, 1)[0];
@@ -105,6 +106,9 @@ async function solveOp(p: Page) {
 async function solveRocket(p: Page) {
   const pct = Math.round(bestSplit(kSpec).split * 100);
   await q(p, 'rocket-split').fill(String(pct)); await q(p, 'rocket-launch').click(); await q(p, 'rocket-final').waitFor({ timeout: 30000 });
+}
+async function solveOrbit(p: Page) {
+  await q(p, 'orbit-dv').fill(String(Math.round(hohmann(xSpec.r1, xSpec.r2).dv1 * 1000))); await q(p, 'orbit-fire').click(); await q(p, 'orbit-final').waitFor({ timeout: 30000 });
 }
 async function solveBarge(p: Page) { for (let i = 0; i < 4; i++) await q(p, `barge-tank-${i}`).fill(String(bargeAnswer[i])); await q(p, 'barge-flood').click(); await q(p, 'barge-final').waitFor(); }
 
@@ -244,6 +248,28 @@ async function main() {
     await p.waitForFunction(() => !(document.querySelector('[data-testid=rocket-launch]') as HTMLButtonElement | null)?.disabled, null, { timeout: 15000 });
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
+  await t('orbit: unusable burns are refused without a guess, a wrong burn reports the apoapsis it reached, the Hohmann burn solves', async () => {
+    useDay(dayWith('orbit'));
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('orbit')).click();
+    await q(p, 'orbit-view').waitFor();
+    for (const bad of ['', '   ', '-300', 'abc', '1e9', '0x10', '2,4,0,0x', '99999']) {
+      await q(p, 'orbit-dv').fill(bad); await q(p, 'orbit-fire').click(); await q(p, 'orbit-msg').waitFor();
+      eq(await pipsUsed(p), '0', `no guess used for "${bad}"`);
+    }
+    await q(p, 'orbit-dv').fill('0'); await q(p, 'orbit-fire').click(); await p.waitForFunction(() => /apoapsis/.test(document.querySelector('[data-testid=orbit-msg]')?.textContent ?? ''));
+    ok(/guess/.test(await text(p, 'orbit-msg')) && !/hint/i.test(await text(p, 'orbit-msg')), 'physical result, guesses left, no hint');
+    eq(await pipsUsed(p), '1', 'a zero burn is a real guess');
+    await solveOrbit(p); ok((await text(p, 'orbit-final')).includes('target orbit'), 'solved'); eq(await q(p, tab('orbit')).getAttribute('data-state'), 'solved');
+    eq(errors.length, 0, errors.join('|')); await ctx.close();
+  });
+  await t('orbit: the coast animation plays and ends with the verdict', async () => {
+    useDay(dayWith('orbit'));
+    const { ctx, page: p, errors } = await openEn(b, { settings: { volume: 40, muted: true, lowCpu: true, reduceMotion: false } }); await q(p, tab('orbit')).click();
+    await q(p, 'orbit-dv').fill('1000'); await q(p, 'orbit-fire').click();
+    ok(await q(p, 'orbit-fire').isDisabled(), 'busy while coasting');
+    await q(p, 'orbit-msg').waitFor({ timeout: 30000 }); ok(/apoapsis/.test(await text(p, 'orbit-msg')), 'verdict after the coast');
+    eq(errors.length, 0, errors.join('|')); await ctx.close();
+  });
   await t('barge: an unballasted barge lists; the right ballast floats her level', async () => {
     useDay(dayWith('barge'));
     const { ctx, page: p, errors } = await openEn(b); await q(p, tab('barge')).click();
@@ -288,7 +314,7 @@ async function main() {
     const { ctx, page: p, errors } = await openEn(b);
     const solvers: Record<string, () => Promise<void>> = {
       waveform: async () => { await q(p, 'graph-input').fill(gSpec.answer); await q(p, 'graph-submit').click(); await q(p, 'graph-final').waitFor(); },
-      lever: () => solveLever(p), bridge: () => solveBridge(p), crankshaft: () => solveCrank(p), barge: () => solveBarge(p), resistor: () => solveResistor(p), powerline: () => solvePower(p), rcfilter: () => solveRc(p), opamp: () => solveOp(p), rocket: () => solveRocket(p),
+      lever: () => solveLever(p), bridge: () => solveBridge(p), crankshaft: () => solveCrank(p), barge: () => solveBarge(p), resistor: () => solveResistor(p), powerline: () => solvePower(p), rcfilter: () => solveRc(p), opamp: () => solveOp(p), rocket: () => solveRocket(p), orbit: () => solveOrbit(p),
     };
     for (const { def } of en.puzzles) { await solvers[def.id](); await q(p, 'ens-next').click(); }
     await q(p, 'ens-summary').waitFor(); ok(/^https?:\/\/[^/]+\/\?s=\d+\.[01]\.(auto|dark|light)\.[01]\.[01]$/.test((await q(p, 'ens-to-obscura').getAttribute('href')) ?? ''), 'results link to Obscura carries settings'); ok((await text(p, 'ens-points')).startsWith('500'), '500 points'); ok((await text(p, 'ens-squares')).includes('🟩🟩🟩🟩🟩') || (await text(p, 'ens-squares')).replace(/\s/g, '') === '🟩🟩🟩🟩🟩', 'all green');
