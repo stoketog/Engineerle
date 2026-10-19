@@ -568,3 +568,7 @@ a.ens-ghost { display: inline-flex; align-items: center; text-decoration: none; 
 .ens-meter-lcd { display: inline-flex; flex-direction: column; gap: 0.1rem; min-width: 9rem; padding: 0.35rem 0.75rem; background: #0b1a10; border: 1px solid var(--en-line2); border-radius: 3px; box-shadow: inset 0 0 12px rgb(0 0 0 / 0.5); }
 .ens-meter-lcd > b { font-size: 1.4rem; line-height: 1.1; color: #7bff9f; font-variant-numeric: tabular-nums; text-shadow: 0 0 8px rgb(123 255 159 / 0.45); }
 .ens-meter-lcd > .ens-label { color: rgb(123 255 159 / 0.6); }
+
+@keyframes ens-flow { to { stroke-dashoffset: -22; } }
+.ens-flow { animation: ens-flow var(--flow, 1.5s) linear infinite; }
+:root[data-motion="reduced"] .ens-flow { animation: none; }
