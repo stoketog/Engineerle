@@ -2,6 +2,7 @@ import { makeWaveform } from './graph';
 import { makeLever } from './lever';
 import { makeBridge } from './truss';
 import { makeCrankshaft } from './crankshaft';
+import { makeCircuit } from './circuit';
 import { makeBarge } from './barge';
 
 /**
@@ -39,6 +40,7 @@ export interface PuzzleDef {
 export const POOL: PuzzleDef[] = [
   { id: 'waveform', discipline: 'electronics', difficulty: 1, tab: 'Scope', title: 'Read the scope', brief: 'Read the trace and write the equation v(t) of the signal on the oscilloscope.', parSeconds: 60, make: makeWaveform },
   { id: 'lever', discipline: 'mechanical', difficulty: 1, tab: 'Lever', title: 'Find the pivot', brief: 'Slide the pivot under the beam until the loads hang level.', parSeconds: 90, make: makeLever },
+  { id: 'resistor', discipline: 'electrical', difficulty: 1, tab: 'Circuit', title: 'Pick the resistor', brief: 'Choose the standard resistor that makes the meter read the target.', parSeconds: 90, make: makeCircuit },
   { id: 'barge', discipline: 'structures', difficulty: 2, tab: 'Barge', title: 'Level the barge', brief: 'Fill the ballast tanks until she floats upright and level.', parSeconds: 150, make: makeBarge },
   { id: 'bridge', discipline: 'structures', difficulty: 3, tab: 'Bridge', title: 'The failing bridge', brief: 'Pick the members that buckle or snap, then test the truck.', parSeconds: 150, make: makeBridge },
   { id: 'crankshaft', discipline: 'mechanical', difficulty: 3, tab: 'Firing order', title: 'Smooth running', brief: 'A four-stroke fires each cylinder once every two turns. Pick the firing order that cancels the shaking.', parSeconds: 150, make: makeCrankshaft },

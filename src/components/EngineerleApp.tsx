@@ -7,6 +7,7 @@ import type { LeverSpec } from '@/engineerle/lever';
 import type { BridgeSpec } from '@/engineerle/truss';
 import type { CrankshaftSpec } from '@/engineerle/crankshaft';
 import type { BargeSpec } from '@/engineerle/barge';
+import type { CircuitSpec } from '@/engineerle/circuit';
 import { addSeconds, dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore, type PuzzleRecord } from '@/engineerle/store';
 import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/dates';
 import { useSettings } from '@/hooks/useSettings';
@@ -23,6 +24,7 @@ import { LeverPuzzle } from './LeverPuzzle';
 import { BridgePuzzle } from './BridgePuzzle';
 import { CrankshaftPuzzle } from './CrankshaftPuzzle';
 import { BargePuzzle } from './BargePuzzle';
+import { CircuitPuzzle } from './CircuitPuzzle';
 
 const SEEN = 'engineerle:v1:help-seen';
 
@@ -118,6 +120,7 @@ export default function EngineerleApp() {
       case 'bridge': return <BridgePuzzle key={key} spec={p.spec as BridgeSpec} {...common} />;
       case 'crankshaft': return <CrankshaftPuzzle key={key} spec={p.spec as CrankshaftSpec} {...common} />;
       case 'barge': return <BargePuzzle key={key} spec={p.spec as BargeSpec} {...common} />;
+      case 'resistor': return <CircuitPuzzle key={key} spec={p.spec as CircuitSpec} {...common} />;
       default: return null;
     }
   };
