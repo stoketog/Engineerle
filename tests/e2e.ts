@@ -77,12 +77,13 @@ async function main() {
   const b = await chromium.launch();
 
   console.log('Engineerle');
-  await t('curve: a wrong equation costs a guess and gives a hint, an unreadable one is free, the right one solves', async () => {
+  await t('curve: a wrong equation costs a guess and says only how many are left, an unreadable one is free, the right one solves', async () => {
     const { ctx, page: p, errors } = await openEn(b); await q(p, tab('waveform')).click();
     await q(p, 'graph-input').fill('x +'); await q(p, 'graph-submit').click(); await q(p, 'graph-msg').waitFor();
     ok((await text(p, 'graph-msg')).includes("didn't use up a guess"), 'free'); eq(await pipsUsed(p), '0', 'no guess used');
     await q(p, 'graph-input').fill('x^2'); await q(p, 'graph-submit').click();
-    await p.waitForFunction(() => document.querySelector('[data-testid=graph-msg]')?.textContent?.includes('Hint'));
+    await p.waitForFunction(() => document.querySelector('[data-testid=graph-msg]')?.textContent?.includes('guesses left'));
+    ok(!/hint/i.test(await text(p, 'graph-msg')), 'no hint');
     eq(await pipsUsed(p), '1', 'one guess used');
     await q(p, 'graph-input').fill(gSpec.answer); await q(p, 'graph-submit').click(); await q(p, 'graph-final').waitFor();
     ok((await text(p, 'graph-final')).includes('Solved'), 'solved'); eq(await q(p, tab('waveform')).getAttribute('data-state'), 'solved', 'tab');
@@ -141,6 +142,28 @@ async function main() {
     const { ctx, page: p } = await openEn(b); await q(p, tab('barge')).click();
     for (let i = 0; i < 4; i++) await q(p, `barge-tank-${i}`).fill('110');
     await q(p, 'barge-flood').click(); await q(p, 'barge-msg').waitFor(); ok((await text(p, 'barge-msg')).includes('pump limit'), 'refused'); eq(await pipsUsed(p), '0'); await ctx.close();
+  });
+  await t('the timer runs while a puzzle is open, stops when it is solved, and survives a reload', async () => {
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('lever')).click();
+    const secs = async () => Number(await q(p, 'ens-timer').getAttribute('data-seconds'));
+    ok((await text(p, 'ens-par')).startsWith('Par '), 'par shown');
+    const t0 = await secs(); await p.waitForTimeout(2600); const t1 = await secs();
+    ok(t1 >= t0 + 2, `timer advances (${t0} -> ${t1})`);
+    await p.reload(); await q(p, tab('lever')).click(); const t2 = await secs();
+    ok(Math.abs(t2 - t1) <= 4 && t2 >= t1 - 1, `kept across a reload (${t1} -> ${t2})`);
+    await solveLever(p); await p.waitForTimeout(300); const t3 = await secs(); eq(await q(p, 'ens-clock').getAttribute('data-state'), 'done', 'clock done');
+    await p.waitForTimeout(1500); eq(await secs(), t3, 'stopped once solved');
+    eq(errors.length, 0, errors.join('|')); await ctx.close();
+  });
+  await t('the timer waits while a dialog is open', async () => {
+    const { ctx, page: p } = await openEn(b, { skipHelp: false });
+    await p.waitForTimeout(1500); eq(await q(p, 'ens-clock').getAttribute('data-state'), 'paused', 'paused behind the dialog');
+    eq(await q(p, 'ens-timer').getAttribute('data-seconds'), '0', 'no time counted'); await ctx.close();
+  });
+  await t('no puzzle page shows a hint', async () => {
+    const { ctx, page: p } = await openEn(b);
+    for (let i = 0; i < 5; i++) { await q(p, `ens-tab-${i}`).click(); await p.waitForTimeout(150); ok(!/hint/i.test((await p.locator('.ens').innerText())), `hint text on tab ${i}`); }
+    await ctx.close();
   });
   await t('solving all five shows the results, a share text, and survives a reload', async () => {
     const { ctx, page: p, errors } = await openEn(b);

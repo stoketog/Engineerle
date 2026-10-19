@@ -35,7 +35,7 @@ export function GraphPuzzle({ spec, record, onAttempt }: PuzzleProps<GraphSpec>)
   const view = spec.view;
   const target = useMemo(() => graphFn(spec), [spec]);
   const [text, setText] = useState('');
-  const [msg, setMsg] = useState<{ k: 'ok' | 'bad' | 'hint'; t: string } | null>(null);
+  const [msg, setMsg] = useState<{ k: 'ok' | 'bad' | 'warn'; t: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [pins, setPins] = useState<number[]>([]);
   const [hover, setHover] = useState<number | null>(null);
@@ -337,9 +337,8 @@ export function GraphPuzzle({ spec, record, onAttempt }: PuzzleProps<GraphSpec>)
     const after = () => {
       if (verdict.ok) setMsg({ k: 'ok', t: 'That is the curve. Every point lines up.' });
       else {
-        const pct = Math.round(verdict.match * 100);
-        const hint = attemptNo === 1 ? spec.hints[0] : attemptNo === 2 ? spec.hints[1] : null;
-        setMsg({ k: 'bad', t: attemptNo >= MAX_ATTEMPTS ? `Out of guesses. It was y = ${spec.answer}.` : `Your curve sits on the target for ${pct}% of the graph.${hint ? ` Hint: ${hint}` : ''}` });
+        const left = MAX_ATTEMPTS - attemptNo;
+        setMsg({ k: 'bad', t: attemptNo >= MAX_ATTEMPTS ? `Out of guesses. It was y = ${spec.answer}.` : `Not that curve. ${left} ${left === 1 ? 'guess' : 'guesses'} left.` });
       }
       finish(verdict.ok);
     };

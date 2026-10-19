@@ -25,7 +25,7 @@ export function Pips({ record }: { record: PuzzleRecord }) {
   );
 }
 
-export function Note({ kind, children, testId }: { kind?: 'ok' | 'bad' | 'hint'; children: ReactNode; testId?: string }) {
+export function Note({ kind, children, testId }: { kind?: 'ok' | 'bad' | 'warn'; children: ReactNode; testId?: string }) {
   return (
     <div className="ens-note ens-fade" data-k={kind} role={kind === 'bad' ? 'alert' : 'status'} data-testid={testId}>
       {children}

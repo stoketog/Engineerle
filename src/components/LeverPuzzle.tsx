@@ -28,7 +28,7 @@ export function LeverPuzzle({ spec, record, onAttempt }: PuzzleProps<LeverSpec>)
   const { play, settings } = useSettings();
   const [p, setP] = useState(0);
   const [phase, setPhase] = useState<Phase>('hold');
-  const [msg, setMsg] = useState<{ k: 'ok' | 'bad' | 'hint'; t: string } | null>(null);
+  const [msg, setMsg] = useState<{ k: 'ok' | 'bad' | 'warn'; t: string } | null>(null);
   const [live, setLive] = useState(0);
   const api = useRef<Api | null>(null);
   const done = record.done;
@@ -148,16 +148,14 @@ export function LeverPuzzle({ spec, record, onAttempt }: PuzzleProps<LeverSpec>)
         const ok = Math.abs(angleDeg) <= LEVEL_DEG;
         const attempt = L.record.attempts + 1;
         const side = angleDeg > 0 ? 'right' : 'left';
-        const dir = angleDeg > 0 ? 'right' : 'left';
         if (ok) {
           setMsg({ k: 'ok', t: `Level. She settles within ${Math.abs(angleDeg).toFixed(1)}° of horizontal.` });
           L.play('correct');
         } else {
           let t = `The ${side} end drops, ${Math.abs(angleDeg).toFixed(0)}° down.`;
-          if (attempt === 1) t += ` Hint: the pivot belongs nearer the heavier side, so slide it ${dir}.`;
-          else if (attempt === 2) t += ` Hint: the balance point is between ${(Math.round((L.spec.answer - 0.8) * 2) / 2).toFixed(1)} and ${(Math.round((L.spec.answer + 0.8) * 2) / 2).toFixed(1)} m.`;
-          else t += ` It balanced at ${L.spec.answer.toFixed(2)} m.`;
-          setMsg({ k: attempt === 1 || attempt === 2 ? 'hint' : 'bad', t });
+          if (attempt >= MAX_ATTEMPTS) t += ` It balanced at ${L.spec.answer.toFixed(2)} m.`;
+          else t += ` ${MAX_ATTEMPTS - attempt} ${MAX_ATTEMPTS - attempt === 1 ? 'guess' : 'guesses'} left.`;
+          setMsg({ k: attempt >= MAX_ATTEMPTS ? 'bad' : 'warn', t });
           L.play('wrong');
         }
         L.onAttempt(ok);

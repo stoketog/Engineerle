@@ -41,7 +41,7 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
   const [marks, setMarks] = useState<number[]>([]);
   const [info, setInfo] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
-  const [msg, setMsg] = useState<{ k: 'ok' | 'bad' | 'hint'; t: string } | null>(null);
+  const [msg, setMsg] = useState<{ k: 'ok' | 'bad' | 'warn'; t: string } | null>(null);
   const [peak, setPeak] = useState(0);
   const api = useRef<Api | null>(null);
   const done = record.done;
@@ -57,7 +57,7 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
       }
       if (s.length >= spec.budget) {
         play('wrong');
-        setMsg({ k: 'hint', t: `You can only reinforce ${spec.budget} members. Tap one you picked to swap it.` });
+        setMsg({ k: 'warn', t: `You can only reinforce ${spec.budget} members. Tap one you picked to swap it.` });
         return s;
       }
       play('clunk', 0.6);
@@ -299,8 +299,9 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
           L.play('correct');
         } else {
           const out = attempt >= MAX_ATTEMPTS;
-          const tx = out ? `Out of guesses. The weak members were ${L.spec.weak.map(nm).join(', ')}.` : 'The truck went through: the span could not carry it.';
-          setMsg({ k: out ? 'bad' : 'hint', t: tx });
+          const left = MAX_ATTEMPTS - attempt;
+          const tx = out ? `Out of guesses. The weak members were ${L.spec.weak.map(nm).join(', ')}.` : `The truck went through: the span could not carry it. ${left} ${left === 1 ? 'guess' : 'guesses'} left.`;
+          setMsg({ k: out ? 'bad' : 'warn', t: tx });
           L.play('wrong');
         }
         L.onAttempt(ok);

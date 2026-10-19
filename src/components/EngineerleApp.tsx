@@ -1,15 +1,16 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { MAX_DAY_POINTS, getEngineerleDaily, type DailyPuzzle } from '@/engineerle/daily';
 import type { GraphSpec } from '@/engineerle/graph';
 import type { LeverSpec } from '@/engineerle/lever';
 import type { BridgeSpec } from '@/engineerle/truss';
 import type { CrankSpec } from '@/engineerle/crank';
 import type { BargeSpec } from '@/engineerle/barge';
-import { dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore } from '@/engineerle/store';
+import { addSeconds, dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore, type PuzzleRecord } from '@/engineerle/store';
 import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/dates';
 import { useSettings } from '@/hooks/useSettings';
+import { useStopwatch } from '@/hooks/useStopwatch';
 import { OBSCURA_URL } from '@/lib/sites';
 import { withSettings } from '@/lib/settings';
 import { IconChart, IconHelp, IconMenu } from './Icons';
@@ -72,11 +73,26 @@ export default function EngineerleApp() {
     }
   };
 
+  // the running clock of the puzzle on screen, so a guess is scored on the exact time, not the last saved second
+  const live = useRef<{ index: number; seconds: number } | null>(null);
+  const saveSeconds = useCallback(
+    (index: number, seconds: number) => {
+      setStore((prev) => {
+        const next = addSeconds(prev, dateKey, index, seconds - getDay(prev, dateKey).puzzles[index].seconds);
+        if (next !== prev) saveStore(next);
+        return next;
+      });
+    },
+    [dateKey],
+  );
+
   const attempt = useCallback(
     (index: number, solved: boolean) => {
       const par = daily.puzzles[index]?.def.parSeconds ?? 90;
       setStore((prev) => {
-        const next = recordAttempt(prev, dateKey, index, solved, par);
+        const l = live.current;
+        const timed = l && l.index === index ? addSeconds(prev, dateKey, index, l.seconds - getDay(prev, dateKey).puzzles[index].seconds) : prev;
+        const next = recordAttempt(timed, dateKey, index, solved, par);
         if (next !== prev) {
           saveStore(next);
           const rec = getDay(next, dateKey).puzzles[index];
@@ -167,6 +183,15 @@ export default function EngineerleApp() {
           </div>
         ) : tab < 5 ? (
           <>
+            <PuzzleClock
+              key={`clock-${dateKey}-${daily.puzzles[tab].def.id}`}
+              index={tab}
+              par={daily.puzzles[tab].def.parSeconds}
+              record={day.puzzles[tab]}
+              paused={modal !== null || menu}
+              live={live}
+              onSave={saveSeconds}
+            />
             {puzzle(tab)}
             {day.puzzles[tab].done && (
               <div className="mt-3 flex justify-end ens-fade">
@@ -205,6 +230,32 @@ export default function EngineerleApp() {
       {modal === 'settings' && <SettingsModal onClose={() => setModal(null)} />}
       {modal === 'help' && <EngineerleHelp onClose={closeHelp} />}
       {modal === 'stats' && <EngineerleStats store={store} today={dateKey} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+/* ───────────────────────────── timer ───────────────────────────── */
+
+export function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Time spent on this puzzle against its par. Runs only while the puzzle is open and unfinished. */
+function PuzzleClock({ index, par, record, paused, live, onSave }: { index: number; par: number; record: PuzzleRecord; paused: boolean; live: MutableRefObject<{ index: number; seconds: number } | null>; onSave: (index: number, seconds: number) => void }) {
+  const seconds = useStopwatch(!record.done && !paused, record.seconds, (sec) => onSave(index, sec));
+  useEffect(() => {
+    live.current = { index, seconds };
+    return () => {
+      if (live.current?.index === index) live.current = null;
+    };
+  }, [live, index, seconds]);
+  const shown = record.done ? record.seconds : seconds;
+  return (
+    <div className="ens-clock" data-testid="ens-clock" data-state={record.done ? 'done' : paused ? 'paused' : 'running'}>
+      <span className="ens-label">Time</span>
+      <b className="font-mono" data-testid="ens-timer" data-seconds={Math.floor(shown)}>{formatClock(shown)}</b>
+      <span className="ens-label" data-testid="ens-par">Par {formatClock(par)}</span>
     </div>
   );
 }
@@ -306,7 +357,7 @@ function EngineerleHelp({ onClose }: { onClose: () => void }) {
           <li><b className="text-white">Engine.</b> Set each crank throw so the forces and the rocking couples cancel out.</li>
           <li><b className="text-white">Barge.</b> Balance her with ballast so she floats upright and level.</li>
         </ol>
-        <p>You get three guesses on each. A first-guess solve is worth 100 points, the second 65, the third 35. Misses show you what went wrong, and a hint comes with the first two.</p>
+        <p>You get three guesses on each, and a clock runs while a puzzle is open. A puzzle is worth up to 100 points: all of them for a first-guess solve inside its par time, less for a second or third guess and for every second over par. There are no hints.</p>
         <button className="btn-primary mt-1" onClick={onClose} data-testid="ens-help-ok">Start</button>
       </div>
     </Modal>

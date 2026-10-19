@@ -137,7 +137,7 @@ export function EnginePuzzle({ spec, record, onAttempt }: PuzzleProps<CrankSpec>
   const { play, settings } = useSettings();
   const n = spec.m.length;
   const [angles, setAngles] = useState<number[]>(() => spec.m.map(() => 0));
-  const [msg, setMsg] = useState<{ k: 'ok' | 'bad' | 'hint'; t: string } | null>(null);
+  const [msg, setMsg] = useState<{ k: 'ok' | 'bad' | 'warn'; t: string } | null>(null);
   const [phase, setPhase] = useState<'idle' | 'running' | 'stopping'>('idle');
   const [vib, setVib] = useState(0);
   const api = useRef<Api | null>(null);
@@ -287,11 +287,9 @@ export function EnginePuzzle({ spec, record, onAttempt }: PuzzleProps<CrankSpec>
           if (u.couple > TOL) bits.push(`the rocking couple is ${Math.round(u.couple * 100)}%`);
           let t = `She shakes: ${bits.join(' and ')}.`;
           if (attempt === 1) t += ' Both polygons must close. The couple polygon is now unlocked.';
-          else if (attempt === 2) {
-            const j = 1 + Math.floor(((L.spec.m.length - 1) * 0.5));
-            t += ` Hint: in one balanced setting, cylinder ${j + 1} sits at ${L.spec.answer[j]}°.`;
-          } else t = `Out of guesses. One balanced setting is ${L.spec.answer.map((a) => `${a}°`).join(', ')}.`;
-          setMsg({ k: attempt >= MAX_ATTEMPTS ? 'bad' : 'hint', t });
+          else if (attempt === 2) t += ' One guess left.';
+          else t = `Out of guesses. One balanced setting is ${L.spec.answer.map((a) => `${a}°`).join(', ')}.`;
+          setMsg({ k: attempt >= MAX_ATTEMPTS ? 'bad' : 'warn', t });
           L.play('wrong');
         }
         L.onAttempt(ok);

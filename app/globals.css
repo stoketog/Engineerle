@@ -536,7 +536,12 @@ button { font: inherit; color: inherit; }
 .ens-note { padding: 0.55rem 0.75rem; font-size: 0.86rem; line-height: 1.4; border-left: 3px solid var(--en-line2); background: var(--en-panel2); color: var(--en-ink); border-radius: 0 3px 3px 0; }
 .ens-note[data-k="ok"] { border-left-color: var(--en-ok); }
 .ens-note[data-k="bad"] { border-left-color: var(--en-bad); }
-.ens-note[data-k="hint"] { border-left-color: var(--en-warn); }
+.ens-note[data-k="warn"] { border-left-color: var(--en-warn); }
+
+.ens-clock { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.5rem; padding: 0 0.15rem; }
+.ens-clock > b { font-size: 1.15rem; color: var(--en-ink); }
+.ens-clock > span:last-child { margin-left: auto; }
+.ens-clock[data-state="paused"] > b { color: var(--en-mute); }
 
 .ens-dial text { font: 600 9px var(--font-mono); fill: var(--en-mute); }
 .ens-dial .face { fill: var(--en-panel2); stroke: var(--en-line2); }
