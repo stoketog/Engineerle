@@ -11,6 +11,7 @@ import type { BargeSpec } from '@/engineerle/barge';
 import type { CircuitSpec } from '@/engineerle/circuit';
 import type { PowerlineSpec } from '@/engineerle/powerline';
 import type { FilterSpec } from '@/engineerle/rcfilter';
+import type { OpampSpec } from '@/engineerle/opamp';
 import { addSeconds, dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore, type PuzzleRecord } from '@/engineerle/store';
 import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/dates';
 import { useSettings } from '@/hooks/useSettings';
@@ -30,6 +31,7 @@ import { BargePuzzle } from './BargePuzzle';
 import { CircuitPuzzle } from './CircuitPuzzle';
 import { PowerlinePuzzle } from './PowerlinePuzzle';
 import { RcFilterPuzzle } from './RcFilterPuzzle';
+import { OpampPuzzle } from './OpampPuzzle';
 
 const SEEN = 'engineerle:v1:help-seen';
 
@@ -41,6 +43,7 @@ function renderPuzzle(id: string, spec: { kind: string }, common: { record: Puzz
     case 'bridge': return <BridgePuzzle spec={spec as BridgeSpec} {...common} />;
     case 'crankshaft': return <CrankshaftPuzzle spec={spec as CrankshaftSpec} {...common} />;
     case 'circuit': return <CircuitPuzzle spec={spec as CircuitSpec} {...common} />;
+    case 'opamp': return <OpampPuzzle spec={spec as OpampSpec} {...common} />;
     case 'rcfilter': return <RcFilterPuzzle spec={spec as FilterSpec} {...common} />;
     case 'powerline': return <PowerlinePuzzle spec={spec as PowerlineSpec} {...common} />;
     case 'barge': return <BargePuzzle spec={spec as BargeSpec} {...common} />;
@@ -331,6 +334,7 @@ function EngineerleHelp({ onClose }: { onClose: () => void }) {
         <p>Five engineering puzzles a day, the same for everyone. Each has real physics behind it, so you can work the answer out rather than guess.</p>
         <ol className="m-0 flex list-none flex-col gap-2 p-0">
           <li><b className="text-white">Scope.</b> Read the trace on the oscilloscope and write the equation of the voltage, with time in seconds.</li>
+          <li><b className="text-white">Op-amp.</b> Choose the two resistors of an amplifier so the output reaches the target without clipping or running out of bandwidth.</li>
           <li><b className="text-white">Filter.</b> Choose a resistor and a capacitor so an RC filter keeps the tone you want and cuts the noise by enough.</li>
           <li><b className="text-white">Power line.</b> Choose the transformer ratio that sends the power to town within the loss budget and the insulators' voltage rating.</li>
           <li><b className="text-white">Resistors.</b> A resistor is missing from a circuit. Choose the standard value that makes the meter read the target.</li>

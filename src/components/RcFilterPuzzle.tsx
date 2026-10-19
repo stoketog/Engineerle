@@ -179,7 +179,7 @@ export function RcFilterPuzzle({ spec, record, onAttempt }: PuzzleProps<FilterSp
           <span className="font-mono text-xs" style={{ color: 'var(--en-mute)' }} data-testid="rc-gains">{cur ? `tone ${fmtDb(cur.signalDb)} · noise ${fmtDb(cur.noiseDb)}` : 'not run yet'}</span>
         </div>
         {!done && (
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex min-w-[15rem] flex-1 flex-col gap-2">
             <label className="flex items-center gap-2">
               <span className="ens-label w-4">R</span>
               <input type="range" min={0} max={R_VALUES.length - 1} step={1} value={ri} disabled={busy} onChange={(e) => setRi(Number(e.target.value))} className="ens-range flex-1" aria-label="Resistance" aria-valuetext={formatOhms(r)} data-testid="rc-r" />

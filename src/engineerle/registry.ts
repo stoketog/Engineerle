@@ -6,6 +6,7 @@ import { makeCircuit } from './circuit';
 import { makeBarge } from './barge';
 import { makePowerline } from './powerline';
 import { makeFilter } from './rcfilter';
+import { makeOpamp } from './opamp';
 
 export type Discipline = 'structures' | 'mechanical' | 'electrical' | 'electronics' | 'aerospace';
 
@@ -39,6 +40,7 @@ export const POOL: PuzzleDef[] = [
   { id: 'circuit', discipline: 'electrical', difficulty: 2, tab: 'Resistors', title: 'Pick the resistor', brief: 'Choose the standard resistor value that makes the meter read the target.', parSeconds: 120, make: makeCircuit },
   { id: 'powerline', discipline: 'electrical', difficulty: 1, tab: 'Power line', title: 'Send the power', brief: 'Pick the transformer ratio that gets the power to town without wasting it or flashing over.', parSeconds: 90, make: makePowerline },
   { id: 'rcfilter', discipline: 'electronics', difficulty: 2, tab: 'Filter', title: 'Tune the filter', brief: 'Pick R and C so the tone gets through and the noise does not.', parSeconds: 90, make: makeFilter },
+  { id: 'opamp', discipline: 'electronics', difficulty: 2, tab: 'Op-amp', title: 'Set the gain', brief: 'Choose the two resistors so the amplifier gives the output you want without clipping.', parSeconds: 90, make: makeOpamp },
   { id: 'lever', discipline: 'mechanical', difficulty: 1, tab: 'Lever', title: 'Find the pivot', brief: 'Slide the pivot under the beam until the loads hang level.', parSeconds: 90, make: makeLever },
   { id: 'barge', discipline: 'structures', difficulty: 2, tab: 'Barge', title: 'Level the barge', brief: 'Fill the ballast tanks until she floats upright and level.', parSeconds: 150, make: makeBarge },
   { id: 'bridge', discipline: 'structures', difficulty: 2, tab: 'Bridge', title: 'The failing bridge', brief: 'Pick the members that buckle or snap, then test the truck.', parSeconds: 150, make: makeBridge },

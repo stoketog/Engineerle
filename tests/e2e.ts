@@ -18,6 +18,7 @@ import { bestResiduals, type CrankshaftSpec } from '@/engineerle/crankshaft';
 import { E24, evaluate, type CircuitSpec } from '@/engineerle/circuit';
 import { solvingRatios, type PowerlineSpec } from '@/engineerle/powerline';
 import { bestPair, R_VALUES, C_VALUES, type FilterSpec } from '@/engineerle/rcfilter';
+import { bestPair as opPair, R_DIAL, type OpampSpec } from '@/engineerle/opamp';
 
 const PROD = 'http://localhost:4182/';
 const servers: ChildProcess[] = [];
@@ -45,7 +46,7 @@ function useDay(day: string) { DAY = day; en = getEngineerleDaily(day); specs = 
 useDay(DAY0);
 const T = (id: string) => en.puzzles.findIndex((x) => x.def.id === id);
 const tab = (id: string) => { if (T(id) < 0) throw new Error(`${id} is not in the five puzzles of ${DAY}`); return `ens-tab-${T(id)}`; };
-const G = () => specs.waveform as GraphSpec, Lv = () => specs.lever as LeverSpec, Br = () => specs.bridge as BridgeSpec, Cr = () => specs.crankshaft as CrankshaftSpec, Ba = () => specs.barge as BargeSpec, Ci = () => specs.circuit as CircuitSpec, Pl = () => specs.powerline as PowerlineSpec, Fl = () => specs.rcfilter as FilterSpec;
+const G = () => specs.waveform as GraphSpec, Lv = () => specs.lever as LeverSpec, Br = () => specs.bridge as BridgeSpec, Cr = () => specs.crankshaft as CrankshaftSpec, Ba = () => specs.barge as BargeSpec, Ci = () => specs.circuit as CircuitSpec, Pl = () => specs.powerline as PowerlineSpec, Fl = () => specs.rcfilter as FilterSpec, Op = () => specs.opamp as OpampSpec;
 const leverAnswer = () => Math.round(Lv().answer * 20) / 20;
 const wrongPivot = () => (Math.abs(leverAnswer() - -3.5) > 1.5 ? -3.5 : 3.5);
 const bargeAnswer = () => bargeSolutions(Ba(), 10, 1)[0];
@@ -92,6 +93,8 @@ async function solvePower(p: Page) { await q(p, `power-ratio-${solvingRatios(Pl(
 
 async function solveFilter(p: Page) { const [r, c] = bestPair(Fl()); await q(p, 'rc-r').fill(String(R_VALUES.indexOf(r))); await q(p, 'rc-c').fill(String(C_VALUES.indexOf(c))); await q(p, 'rc-run').click(); await q(p, 'rc-final').waitFor({ timeout: 30_000 }); }
 
+async function solveOpamp(p: Page) { const [rf, rg] = opPair(Op()); await q(p, 'op-rf').fill(String(R_DIAL.indexOf(rf))); await q(p, 'op-rg').fill(String(R_DIAL.indexOf(rg))); await q(p, 'op-run').click(); await q(p, 'op-final').waitFor({ timeout: 30_000 }); }
+
 /** One wrong first guess per puzzle, used by the no-hints test; each returns once the message is up. */
 const misses: Record<string, (p: Page) => Promise<string>> = {
   waveform: async (p) => { await q(p, 'graph-input').fill('t'); await q(p, 'graph-submit').click(); await q(p, 'graph-msg').waitFor(); return 'graph-msg'; },
@@ -99,12 +102,13 @@ const misses: Record<string, (p: Page) => Promise<string>> = {
   bridge: async (p) => { await q(p, 'bridge-test').waitFor(); return 'bridge-test'; },
   crankshaft: async (p) => { await tapOrder(p, poorOrder()); await q(p, 'crank-run').click(); await q(p, 'crank-msg').waitFor({ timeout: 30_000 }); return 'crank-msg'; },
   barge: async (p) => { await q(p, 'barge-flood').click(); await q(p, 'barge-msg').waitFor({ timeout: 30_000 }); return 'barge-msg'; },
+  opamp: async (p) => { await q(p, 'op-run').click(); await q(p, 'op-msg').waitFor({ timeout: 30_000 }); return 'op-msg'; },
   rcfilter: async (p) => { await q(p, 'rc-run').click(); await q(p, 'rc-msg').waitFor({ timeout: 30_000 }); return 'rc-msg'; },
   powerline: async (p) => { await q(p, 'power-ratio-1').click(); await q(p, 'power-test').click(); await q(p, 'power-msg').waitFor({ timeout: 30_000 }); return 'power-msg'; },
   circuit: async (p) => { await dial(p, circuitWrong()); await q(p, 'circuit-test').click(); await q(p, 'circuit-msg').waitFor({ timeout: 30_000 }); return 'circuit-msg'; },
 };
 
-const solvers: Record<string, (p: Page) => Promise<void>> = { waveform: solveWaveform, lever: solveLever, bridge: solveBridge, crankshaft: solveCrank, barge: solveBarge, circuit: solveCircuit, powerline: solvePower, rcfilter: solveFilter };
+const solvers: Record<string, (p: Page) => Promise<void>> = { waveform: solveWaveform, lever: solveLever, bridge: solveBridge, crankshaft: solveCrank, barge: solveBarge, circuit: solveCircuit, powerline: solvePower, rcfilter: solveFilter, opamp: solveOpamp };
 
 async function main() {
   serve('dist', 4182);
@@ -242,6 +246,17 @@ async function main() {
     await p.waitForFunction(() => !(document.querySelector('[data-testid=rc-run]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
     await solveFilter(p); eq(await q(p, tab('rcfilter')).getAttribute('data-state'), 'solved', 'tab');
     await p.reload(); await q(p, tab('rcfilter')).waitFor(); eq(await q(p, tab('rcfilter')).getAttribute('data-state'), 'solved', 'saved');
+    eq(errors.length, 0, errors.join('|')); await ctx.close();
+  });
+  await t('op-amp: the dials show the gain, a wrong pair shows the output peak and costs a guess, a good pair solves', async () => {
+    const { ctx, page: p, errors } = await openEn(b, { puzzle: 'opamp' }); await q(p, tab('opamp')).click();
+    const before = await text(p, 'op-reading'); await q(p, 'op-rf').fill('40'); ok((await text(p, 'op-reading')) !== before, 'the gain follows the dials');
+    ok((await text(p, 'op-peak')).includes('not run'), 'nothing is shown before a run');
+    await q(p, 'op-rf').fill('0'); await q(p, 'op-rg').fill('0'); await q(p, 'op-run').click(); await q(p, 'op-msg').waitFor({ timeout: 30_000 });
+    eq(await pipsUsed(p), '1', 'a wrong pair uses a guess'); ok(/output peak/.test(await text(p, 'op-peak')), 'peak shown');
+    await p.waitForFunction(() => !(document.querySelector('[data-testid=op-run]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
+    await solveOpamp(p); eq(await q(p, tab('opamp')).getAttribute('data-state'), 'solved', 'tab');
+    await p.reload(); await q(p, tab('opamp')).waitFor(); eq(await q(p, tab('opamp')).getAttribute('data-state'), 'solved', 'saved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('solving all five shows the results, a share text, and survives a reload', async () => {
