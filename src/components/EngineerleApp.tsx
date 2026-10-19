@@ -14,6 +14,7 @@ import type { OpampSpec } from '@/engineerle/opamp';
 import type { RocketSpec } from '@/engineerle/rocket';
 import type { OrbitSpec } from '@/engineerle/orbit';
 import type { AircraftSpec } from '@/engineerle/aircraft';
+import type { GearSpec } from '@/engineerle/gears';
 import { addSeconds, dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore, type PuzzleRecord } from '@/engineerle/store';
 import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/dates';
 import { useSettings } from '@/hooks/useSettings';
@@ -37,6 +38,7 @@ import { OpampPuzzle } from './OpampPuzzle';
 import { RocketPuzzle } from './RocketPuzzle';
 import { OrbitPuzzle } from './OrbitPuzzle';
 import { AircraftPuzzle } from './AircraftPuzzle';
+import { GearPuzzle } from './GearPuzzle';
 
 const SEEN = 'engineerle:v1:help-seen';
 
@@ -139,6 +141,7 @@ export default function EngineerleApp() {
       case 'rocket': return <RocketPuzzle key={key} spec={p.spec as RocketSpec} {...common} />;
       case 'orbit': return <OrbitPuzzle key={key} spec={p.spec as OrbitSpec} {...common} />;
       case 'aircraft': return <AircraftPuzzle key={key} spec={p.spec as AircraftSpec} {...common} />;
+      case 'gears': return <GearPuzzle key={key} spec={p.spec as GearSpec} {...common} />;
       default: return null;
     }
   };

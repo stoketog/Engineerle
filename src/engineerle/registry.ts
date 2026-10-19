@@ -9,6 +9,7 @@ import { makeOpamp } from './opamp';
 import { makeRocket } from './rocket';
 import { makeOrbit } from './orbit';
 import { makeAircraft } from './aircraft';
+import { makeGears } from './gears';
 import { makeBarge } from './barge';
 
 /**
@@ -53,6 +54,7 @@ export const POOL: PuzzleDef[] = [
   { id: 'rocket', discipline: 'aerospace', difficulty: 2, tab: 'Staging', title: 'Split the stages', brief: 'Divide the propellant between two stages so the rocket reaches orbit.', parSeconds: 120, make: makeRocket },
   { id: 'orbit', discipline: 'aerospace', difficulty: 3, tab: 'Transfer', title: 'Reach the high orbit', brief: 'Size one burn so the transfer ellipse tops out on the target orbit.', parSeconds: 150, make: makeOrbit },
   { id: 'aircraft', discipline: 'aerospace', difficulty: 2, tab: 'Balance', title: 'Load the aircraft', brief: 'Place the cargo and fuel so she balances and stays stable.', parSeconds: 120, make: makeAircraft },
+  { id: 'gears', discipline: 'mechanical', difficulty: 1, tab: 'Gears', title: 'Gear the output', brief: 'Pick tooth counts so the output shaft turns at the speed and direction required.', parSeconds: 90, make: makeGears },
   { id: 'barge', discipline: 'structures', difficulty: 2, tab: 'Barge', title: 'Level the barge', brief: 'Fill the ballast tanks until she floats upright and level.', parSeconds: 150, make: makeBarge },
   { id: 'bridge', discipline: 'structures', difficulty: 3, tab: 'Bridge', title: 'The failing bridge', brief: 'Pick the members that buckle or snap, then test the truck.', parSeconds: 150, make: makeBridge },
   { id: 'crankshaft', discipline: 'mechanical', difficulty: 3, tab: 'Firing order', title: 'Smooth running', brief: 'A four-stroke fires each cylinder once every two turns. Pick the firing order that cancels the shaking.', parSeconds: 150, make: makeCrankshaft },
