@@ -4,6 +4,7 @@ import { makeBridge } from './truss';
 import { makeCrankshaft } from './crankshaft';
 import { makeCircuit } from './circuit';
 import { makeBarge } from './barge';
+import { makePowerline } from './powerline';
 
 export type Discipline = 'structures' | 'mechanical' | 'electrical' | 'electronics' | 'aerospace';
 
@@ -35,6 +36,7 @@ export interface PuzzleDef {
 export const POOL: PuzzleDef[] = [
   { id: 'waveform', discipline: 'electronics', difficulty: 1, tab: 'Scope', title: 'Read the scope', brief: 'Write the equation of the voltage on the screen: time t is in seconds.', parSeconds: 60, make: makeWaveform },
   { id: 'circuit', discipline: 'electrical', difficulty: 2, tab: 'Resistors', title: 'Pick the resistor', brief: 'Choose the standard resistor value that makes the meter read the target.', parSeconds: 120, make: makeCircuit },
+  { id: 'powerline', discipline: 'electrical', difficulty: 1, tab: 'Power line', title: 'Send the power', brief: 'Pick the transformer ratio that gets the power to town without wasting it or flashing over.', parSeconds: 90, make: makePowerline },
   { id: 'lever', discipline: 'mechanical', difficulty: 1, tab: 'Lever', title: 'Find the pivot', brief: 'Slide the pivot under the beam until the loads hang level.', parSeconds: 90, make: makeLever },
   { id: 'barge', discipline: 'structures', difficulty: 2, tab: 'Barge', title: 'Level the barge', brief: 'Fill the ballast tanks until she floats upright and level.', parSeconds: 150, make: makeBarge },
   { id: 'bridge', discipline: 'structures', difficulty: 2, tab: 'Bridge', title: 'The failing bridge', brief: 'Pick the members that buckle or snap, then test the truck.', parSeconds: 150, make: makeBridge },

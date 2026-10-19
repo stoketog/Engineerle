@@ -9,6 +9,7 @@ import type { BridgeSpec } from '@/engineerle/truss';
 import type { CrankshaftSpec } from '@/engineerle/crankshaft';
 import type { BargeSpec } from '@/engineerle/barge';
 import type { CircuitSpec } from '@/engineerle/circuit';
+import type { PowerlineSpec } from '@/engineerle/powerline';
 import { addSeconds, dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore, type PuzzleRecord } from '@/engineerle/store';
 import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/dates';
 import { useSettings } from '@/hooks/useSettings';
@@ -26,6 +27,7 @@ import { BridgePuzzle } from './BridgePuzzle';
 import { CrankshaftPuzzle } from './CrankshaftPuzzle';
 import { BargePuzzle } from './BargePuzzle';
 import { CircuitPuzzle } from './CircuitPuzzle';
+import { PowerlinePuzzle } from './PowerlinePuzzle';
 
 const SEEN = 'engineerle:v1:help-seen';
 
@@ -37,6 +39,7 @@ function renderPuzzle(id: string, spec: { kind: string }, common: { record: Puzz
     case 'bridge': return <BridgePuzzle spec={spec as BridgeSpec} {...common} />;
     case 'crankshaft': return <CrankshaftPuzzle spec={spec as CrankshaftSpec} {...common} />;
     case 'circuit': return <CircuitPuzzle spec={spec as CircuitSpec} {...common} />;
+    case 'powerline': return <PowerlinePuzzle spec={spec as PowerlineSpec} {...common} />;
     case 'barge': return <BargePuzzle spec={spec as BargeSpec} {...common} />;
     default: return null;
   }
@@ -325,6 +328,7 @@ function EngineerleHelp({ onClose }: { onClose: () => void }) {
         <p>Five engineering puzzles a day, the same for everyone. Each has real physics behind it, so you can work the answer out rather than guess.</p>
         <ol className="m-0 flex list-none flex-col gap-2 p-0">
           <li><b className="text-white">Scope.</b> Read the trace on the oscilloscope and write the equation of the voltage, with time in seconds.</li>
+          <li><b className="text-white">Power line.</b> Choose the transformer ratio that sends the power to town within the loss budget and the insulators' voltage rating.</li>
           <li><b className="text-white">Resistors.</b> A resistor is missing from a circuit. Choose the standard value that makes the meter read the target.</li>
           <li><b className="text-white">Lever.</b> Slide the pivot under a loaded plank so it hangs level when released.</li>
           <li><b className="text-white">Bridge.</b> Pick the members that are too thin, then send the truck over. Squeezed members buckle, stretched ones snap.</li>

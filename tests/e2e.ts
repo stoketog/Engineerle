@@ -16,6 +16,7 @@ import type { LeverSpec } from '@/engineerle/lever';
 import type { BridgeSpec } from '@/engineerle/truss';
 import { bestResiduals, type CrankshaftSpec } from '@/engineerle/crankshaft';
 import { E24, evaluate, type CircuitSpec } from '@/engineerle/circuit';
+import { solvingRatios, type PowerlineSpec } from '@/engineerle/powerline';
 
 const PROD = 'http://localhost:4182/';
 const servers: ChildProcess[] = [];
@@ -43,7 +44,7 @@ function useDay(day: string) { DAY = day; en = getEngineerleDaily(day); specs = 
 useDay(DAY0);
 const T = (id: string) => en.puzzles.findIndex((x) => x.def.id === id);
 const tab = (id: string) => { if (T(id) < 0) throw new Error(`${id} is not in the five puzzles of ${DAY}`); return `ens-tab-${T(id)}`; };
-const G = () => specs.waveform as GraphSpec, Lv = () => specs.lever as LeverSpec, Br = () => specs.bridge as BridgeSpec, Cr = () => specs.crankshaft as CrankshaftSpec, Ba = () => specs.barge as BargeSpec, Ci = () => specs.circuit as CircuitSpec;
+const G = () => specs.waveform as GraphSpec, Lv = () => specs.lever as LeverSpec, Br = () => specs.bridge as BridgeSpec, Cr = () => specs.crankshaft as CrankshaftSpec, Ba = () => specs.barge as BargeSpec, Ci = () => specs.circuit as CircuitSpec, Pl = () => specs.powerline as PowerlineSpec;
 const leverAnswer = () => Math.round(Lv().answer * 20) / 20;
 const wrongPivot = () => (Math.abs(leverAnswer() - -3.5) > 1.5 ? -3.5 : 3.5);
 const bargeAnswer = () => bargeSolutions(Ba(), 10, 1)[0];
@@ -86,6 +87,8 @@ const circuitWrong = () => { const r = circuitRight().ohms; return boxValues().f
 async function dial(p: Page, v: { d: number; e: number }) { await q(p, `circuit-decade-${v.d}`).click(); await q(p, 'circuit-e24').fill(String(v.e)); }
 async function solveCircuit(p: Page) { await dial(p, circuitRight()); await q(p, 'circuit-test').click(); await q(p, 'circuit-final').waitFor({ timeout: 30_000 }); }
 
+async function solvePower(p: Page) { await q(p, `power-ratio-${solvingRatios(Pl())[0]}`).click(); await q(p, 'power-test').click(); await q(p, 'power-final').waitFor({ timeout: 30_000 }); }
+
 /** One wrong first guess per puzzle, used by the no-hints test; each returns once the message is up. */
 const misses: Record<string, (p: Page) => Promise<string>> = {
   waveform: async (p) => { await q(p, 'graph-input').fill('t'); await q(p, 'graph-submit').click(); await q(p, 'graph-msg').waitFor(); return 'graph-msg'; },
@@ -93,10 +96,11 @@ const misses: Record<string, (p: Page) => Promise<string>> = {
   bridge: async (p) => { await q(p, 'bridge-test').waitFor(); return 'bridge-test'; },
   crankshaft: async (p) => { await tapOrder(p, poorOrder()); await q(p, 'crank-run').click(); await q(p, 'crank-msg').waitFor({ timeout: 30_000 }); return 'crank-msg'; },
   barge: async (p) => { await q(p, 'barge-flood').click(); await q(p, 'barge-msg').waitFor({ timeout: 30_000 }); return 'barge-msg'; },
+  powerline: async (p) => { await q(p, 'power-ratio-1').click(); await q(p, 'power-test').click(); await q(p, 'power-msg').waitFor({ timeout: 30_000 }); return 'power-msg'; },
   circuit: async (p) => { await dial(p, circuitWrong()); await q(p, 'circuit-test').click(); await q(p, 'circuit-msg').waitFor({ timeout: 30_000 }); return 'circuit-msg'; },
 };
 
-const solvers: Record<string, (p: Page) => Promise<void>> = { waveform: solveWaveform, lever: solveLever, bridge: solveBridge, crankshaft: solveCrank, barge: solveBarge, circuit: solveCircuit };
+const solvers: Record<string, (p: Page) => Promise<void>> = { waveform: solveWaveform, lever: solveLever, bridge: solveBridge, crankshaft: solveCrank, barge: solveBarge, circuit: solveCircuit, powerline: solvePower };
 
 async function main() {
   serve('dist', 4182);
@@ -212,6 +216,17 @@ async function main() {
     await p.waitForFunction(() => !(document.querySelector('[data-testid=circuit-test]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
     await solveCircuit(p); ok((await text(p, 'circuit-final')).length > 0, 'final'); eq(await q(p, tab('circuit')).getAttribute('data-state'), 'solved', 'tab');
     await p.reload(); await q(p, tab('circuit')).waitFor(); eq(await q(p, tab('circuit')).getAttribute('data-state'), 'solved', 'saved');
+    eq(errors.length, 0, errors.join('|')); await ctx.close();
+  });
+  await t('power line: transmit needs a ratio, a ratio that wastes too much shows the readings and costs a guess, a good one solves', async () => {
+    const { ctx, page: p, errors } = await openEn(b, { puzzle: 'powerline' }); await q(p, tab('powerline')).click();
+    eq(await q(p, 'power-test').isDisabled(), true, 'cannot transmit with no ratio chosen');
+    await q(p, 'power-ratio-1').click(); await q(p, 'power-test').click(); await q(p, 'power-msg').waitFor({ timeout: 30_000 });
+    eq(await pipsUsed(p), '1', 'a wasteful ratio uses a guess'); ok(/loss|overloaded/.test(await text(p, 'power-loss')), 'readings shown');
+    ok(/loses|no power reaches/.test(await text(p, 'power-msg')), 'says what happened');
+    await p.waitForFunction(() => !(document.querySelector('[data-testid=power-test]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
+    await solvePower(p); eq(await q(p, tab('powerline')).getAttribute('data-state'), 'solved', 'tab');
+    await p.reload(); await q(p, tab('powerline')).waitFor(); eq(await q(p, tab('powerline')).getAttribute('data-state'), 'solved', 'saved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('solving all five shows the results, a share text, and survives a reload', async () => {
