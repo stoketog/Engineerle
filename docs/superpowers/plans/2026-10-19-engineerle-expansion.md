@@ -36,8 +36,8 @@
 
 **Files:** Modify `package.json` (test script), `tests/` (new test files are added by later tasks).
 
-- [ ] **Step 1:** In `package.json` set `"test"` to run every `tests/*.test.ts` in sequence (`tsx tests/engineerle.test.ts && tsx tests/pool.test.ts ...` is replaced by a small `scripts/run-tests.mjs` that runs each file matching `tests/*.test.ts` and exits non-zero on the first failure).
-- [ ] **Step 2:** Create `scripts/run-tests.mjs`; run `npm test`; expected: the existing 20 tests pass.
+- [ ] **Step 1:** Create `scripts/run-tests.mjs`, which runs every file matching `tests/*.test.ts` with `tsx` in turn and exits non-zero on the first failure; set `"test"` in `package.json` to `node scripts/run-tests.mjs`.
+- [ ] **Step 2:** Run `npm test`; expected: the existing 20 tests pass.
 - [ ] **Step 3:** Commit `chore: run every unit test file`.
 
 ### Task 1: Bridge physics rebuild
@@ -190,7 +190,7 @@
 
 **Interfaces:** Produces `MU = 398600.4418` (km^3/s^2); `visViva(r: number, a: number): number`; `hohmann(r1: number, r2: number): { dv1: number; dv2: number; time: number }`; `leadAngle(r1: number, r2: number): number` (`pi * (1 - sqrt(((r1 + r2) / (2 * r2))^3))`, radians); `propagate(state: { x: number; y: number; vx: number; vy: number }, dt: number, steps: number): State` (RK4 two-body); `makeOrbit(seed): OrbitSpec` (start radius 6578-7500 km, target 8000-42164 km, burn tolerance 1%); `evaluate(spec, dv1: number)` propagates the burn to apoapsis and solved when the apoapsis radius is within 1% of the target.
 
-- [ ] **Step 1: Failing tests.** Circular speed `visViva(r, r) === sqrt(MU / r)`; for r1 = 6678.137 and r2 = 42164: `dv1`, `dv2` and `time` agree with an independent RK4 propagation (burn `dv1` at periapsis, find the apoapsis radius and the half-period) within 1e-4 relative; apoapsis from the propagator equals `r2` within 0.1 km; total energy conserved over 10 orbits within 1e-9 relative; `leadAngle(r1, r2)` agrees within 1e-4 rad with the angle by which a target in the outer circular orbit advances... (test measures: after `time`, target true-anomaly gain is `pi - leadAngle`); `evaluate` refuses non-finite or negative burns; a burn of 0 does not solve.
+- [ ] **Step 1: Failing tests.** Circular speed `visViva(r, r) === sqrt(MU / r)`; for r1 = 6678.137 and r2 = 42164: `dv1`, `dv2` and `time` agree with an independent RK4 propagation (burn `dv1` at periapsis, find the apoapsis radius and the half-period) within 1e-4 relative; apoapsis from the propagator equals `r2` within 0.1 km; total energy conserved over 10 orbits within 1e-9 relative; `leadAngle(r1, r2)`: after the transfer `time`, a target in the outer circular orbit has advanced `sqrt(MU / r2^3) * time` radians, and that equals `pi - leadAngle(r1, r2)` within 1e-9; `evaluate` refuses non-finite or negative burns; a burn of 0 does not solve.
 - [ ] **Steps 2-5:** UI: 3D Earth and orbits; the player sets the burn in m/s and fires at periapsis; the spacecraft follows the real path (accelerated time) and the achieved apoapsis is shown as a result of the guess. Register (aerospace, difficulty 3, par 150). Commit `feat: orbit transfer puzzle`; push.
 
 ### Task 12: Aircraft balance
@@ -222,7 +222,7 @@
 - [ ] **Step 1: Failing tests** (fetch mocked): `fetchDayStats` returns `null` on a thrown fetch, a 500, malformed JSON and a body missing `buckets`; returns parsed stats on a good body; times out at 5 s; `submitResult` returns `'queued'` when fetch throws and `'sent'` on the retry, and `'skipped'` the second time for the same day; `percentileBelow([0,0,5,5,0...], bucketOfPlayer)` equals 62.5 for a hand-worked example in the test (10 players, 5 in a lower bucket, 5 in the player's bucket).
 - [ ] **Step 2:** Run; expected FAIL.
 - [ ] **Step 3:** Implement the client with `fetch` to `${url}/rest/v1/rpc/<name>`.
-- [ ] **Step 4: Create the Supabase project and migration** with the connected Supabase tools (the owner has approved Supabase): list organisations, confirm cost with `get_cost`-style info if offered, create the project, apply the migration, run `get_advisors` for security and fix any warning, then test the RPCs with `execute_sql` (a valid row is accepted, a duplicate is ignored, `total = 600` is rejected, a direct `select` on the table as `anon` returns nothing). Record the project URL and publishable key; tell the owner to add both as the two `NEXT_PUBLIC_` variables in the Vercel project.
+- [ ] **Step 4: Create the Supabase project and migration** with the connected Supabase tools (the owner has approved Supabase): list organisations, tell the owner the cost shown for the project before creating it, create the project, apply the migration, run `get_advisors` for security and fix any warning, then test the RPCs with `execute_sql` (a valid row is accepted, a duplicate is ignored, `total = 600` is rejected, a direct `select` on the table as `anon` returns nothing). Record the project URL and publishable key; tell the owner to add both as the two `NEXT_PUBLIC_` variables in the Vercel project.
 - [ ] **Step 5:** Commit `feat: stats client and Supabase schema`; push.
 
 ### Task 15: Results comparison graph
