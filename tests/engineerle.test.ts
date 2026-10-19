@@ -5,8 +5,10 @@ import { makeLever, balancePoint, isLevel, settleAngle, tolerance, moment } from
 import { buildTruss, solveTruss, truckLoads, makeBridge, envelope, capacity, UPGRADE, startCollapse, stepCollapse } from '@/engineerle/truss';
 import { makeEngine, isSmooth, forceSum, coupleSum, solutions as crankSolutions, unbalance } from '@/engineerle/crank';
 import { makeBarge, bargeState, isSolved, solutions as bargeSolutions, withinLimits } from '@/engineerle/barge';
-import { getEngineerleDaily, PUZZLES, engineerleNumber, ENGINEERLE_EPOCH } from '@/engineerle/daily';
-import { emptyStore, recordAttempt, getDay, dayDone, dayPoints, streak, totals, shareText, sanitise, square } from '@/engineerle/store';
+import { emptyStore, recordAttempt, addSeconds, getDay, dayDone, dayPoints, streak, totals, shareText, sanitise, square, STORE_VERSION } from '@/engineerle/store';
+import { pickDay } from '@/engineerle/select';
+import { byId } from '@/engineerle/registry';
+import { puzzlePoints } from '@/engineerle/scoring';
 
 let passed = 0;
 const test = (name: string, fn: () => void) => {
@@ -183,65 +185,93 @@ test('generated barges list awkwardly and have honest solutions', () => {
   }
 });
 
-console.log('Daily set and progress');
-test('everyone gets the same five puzzles on a day; different days differ', () => {
-  const a = getEngineerleDaily('2026-10-20'), b = getEngineerleDaily('2026-10-20'), c = getEngineerleDaily('2026-10-21');
-  assert.equal(JSON.stringify(a), JSON.stringify(b));
-  assert.notEqual(JSON.stringify(a), JSON.stringify(c));
-  assert.deepEqual(a.specs.map((s) => s.kind), ['graph', 'lever', 'bridge', 'engine', 'barge']);
-  assert.deepEqual(PUZZLES.map((p) => p.kind), a.specs.map((s) => s.kind));
-  assert.equal(engineerleNumber(ENGINEERLE_EPOCH), 1);
-  assert.equal(a.number, 2);
-});
-test('every day for a year generates quickly and validly', () => {
-  const t0 = Date.now();
-  for (let i = 0; i < 20; i++) {
-    const d = getEngineerleDaily(`2027-0${1 + (i % 9)}-${10 + i}`);
-    assert.ok(isSmooth(d.specs[3], d.specs[3].answer));
-    assert.ok(checkGraph(d.specs[0], d.specs[0].answer).ok);
-    assert.ok(isSolved(d.specs[4], bargeSolutions(d.specs[4], 10, 1)[0]));
-  }
-  assert.ok(Date.now() - t0 < 8000, `${Date.now() - t0} ms`);
-});
-test('scoring: 100, 65, 35 for the first, second and third guess; none when out of guesses', () => {
+console.log('Progress');
+const PAR = 90;
+const DAY = '2026-10-20';
+test('points follow the guess and the time, and a puzzle that runs out of guesses scores nothing', () => {
   let s = emptyStore();
-  s = recordAttempt(s, 'd', 0, true);
-  s = recordAttempt(s, 'd', 1, false); s = recordAttempt(s, 'd', 1, true);
-  s = recordAttempt(s, 'd', 2, false); s = recordAttempt(s, 'd', 2, false); s = recordAttempt(s, 'd', 2, true);
-  s = recordAttempt(s, 'd', 3, false); s = recordAttempt(s, 'd', 3, false); s = recordAttempt(s, 'd', 3, false);
-  const d = getDay(s, 'd');
-  assert.deepEqual(d.puzzles.map((p) => p.points), [100, 65, 35, 0, 0]);
-  assert.ok(!dayDone(d));
-  assert.equal(dayPoints(d), 200);
+  s = addSeconds(s, DAY, 0, 40); s = recordAttempt(s, DAY, 0, true, PAR);
+  s = addSeconds(s, DAY, 1, 225); s = recordAttempt(s, DAY, 1, false, PAR); s = recordAttempt(s, DAY, 1, true, PAR);
+  s = addSeconds(s, DAY, 2, 400); for (const hit of [false, false, true]) s = recordAttempt(s, DAY, 2, hit, PAR);
+  s = addSeconds(s, DAY, 3, 30); for (let i = 0; i < 3; i++) s = recordAttempt(s, DAY, 3, false, PAR);
+  const d = getDay(s, DAY);
+  assert.deepEqual(d.puzzles.map((p) => p.points), [100, 46, 14, 0, 0]);
+  assert.deepEqual(d.puzzles.map((p) => p.attempts), [1, 2, 3, 3, 0]);
+  assert.deepEqual(d.puzzles.map((p) => p.seconds), [40, 225, 400, 30, 0]);
+  assert.ok(!dayDone(d), 'the fifth puzzle is untouched');
+  assert.equal(dayPoints(d), 160);
   assert.deepEqual(d.puzzles.map(square), ['🟩', '🟨', '🟧', '⬛', '⬛']);
-  // a finished puzzle cannot be re-scored
-  const again = recordAttempt(s, 'd', 0, false);
-  assert.equal(JSON.stringify(again), JSON.stringify(s));
+});
+test('a finished puzzle is never re-scored and its clock stops', () => {
+  let s = emptyStore();
+  s = addSeconds(s, DAY, 0, 12); s = recordAttempt(s, DAY, 0, true, PAR);
+  assert.equal(recordAttempt(s, DAY, 0, false, PAR), s);
+  assert.equal(addSeconds(s, DAY, 0, 50), s);
+  assert.equal(getDay(s, DAY).puzzles[0].seconds, 12);
+});
+test('time only ever goes up, and nonsense is ignored', () => {
+  let s = emptyStore();
+  s = addSeconds(s, DAY, 1, 10);
+  for (const bad of [-5, NaN, Infinity, 0]) assert.equal(addSeconds(s, DAY, 1, bad), s);
+  s = addSeconds(s, DAY, 1, 2.5);
+  assert.equal(getDay(s, DAY).puzzles[1].seconds, 12.5);
+  assert.equal(addSeconds(s, DAY, 9, 3), s, 'no such puzzle');
+});
+test("a day's record is lined up with that day's puzzles by id", () => {
+  const ids = pickDay(DAY);
+  let s = emptyStore();
+  assert.deepEqual(getDay(s, DAY).puzzles.map((p) => p.id), ids);
+  s = recordAttempt(s, DAY, 2, true, PAR);
+  assert.equal(getDay(s, DAY).puzzles[2].id, ids[2]);
+  assert.equal(getDay(s, DAY).puzzles[2].solved, true);
+  // if the day's set changes later (a puzzle added to the pool), progress follows the puzzle, not the position
+  const moved = { ...s, days: { ...s.days, [DAY]: { puzzles: [...getDay(s, DAY).puzzles].reverse() } } };
+  const back = getDay(moved, DAY);
+  assert.deepEqual(back.puzzles.map((p) => p.id), ids);
+  assert.equal(back.puzzles[2].solved, true);
 });
 test('streaks, totals and the share text', () => {
   let s = emptyStore();
-  for (const k of ['2026-10-19', '2026-10-20', '2026-10-21']) for (let i = 0; i < 5; i++) s = recordAttempt(s, k, i, i !== 3 || k !== '2026-10-20' ? true : false);
+  for (const k of ['2026-10-19', '2026-10-20', '2026-10-21']) for (let i = 0; i < 5; i++) s = recordAttempt(s, k, i, i !== 3 || k !== '2026-10-20', PAR);
   // day 2 puzzle 3 is only attempted once, so that day is not finished
   assert.equal(streak(s, '2026-10-21'), 1);
-  for (let i = 0; i < 2; i++) s = recordAttempt(s, '2026-10-20', 3, false);
+  for (let i = 0; i < 2; i++) s = recordAttempt(s, '2026-10-20', 3, false, PAR);
   assert.equal(streak(s, '2026-10-21'), 3);
-  assert.equal(streak(s, '2026-10-22'), 3, 'today still open keeps yesterday\'s run');
+  assert.equal(streak(s, '2026-10-22'), 3, "today still open keeps yesterday's run");
   assert.equal(streak(s, '2026-10-25'), 0);
   const t = totals(s);
   assert.equal(t.played, 3);
   assert.equal(t.perfect, 2);
   assert.equal(t.best, 500);
   const txt = shareText('2026-10-20', getDay(s, '2026-10-20'));
-  assert.ok(txt.startsWith('Engineerle #2') && txt.includes('🟩🟩🟩⬛🟩'), txt);
+  assert.ok(txt.startsWith('Engineerle #2  400/500') && txt.includes('🟩🟩🟩⬛🟩'), txt);
 });
-test('saved data is cleaned on load', () => {
-  const s = sanitise({ days: { '2026-10-19': { puzzles: [{ attempts: 9, solved: true }, { attempts: 'x' }, null] }, junk: {} } });
+test('saved data is cleaned on load: old versions, junk, odd numbers and unknown puzzles', () => {
+  const ids = pickDay('2026-10-19');
+  const par = byId(ids[0])!.parSeconds;
+  const s = sanitise({ v: STORE_VERSION, days: { '2026-10-19': { puzzles: [{ id: ids[0], attempts: 99, solved: true, seconds: -5, points: 1e9 }, { attempts: 'x' }, null] }, junk: {}, '2026-13-45x': {} } });
   assert.equal(Object.keys(s.days).length, 1);
   const d = s.days['2026-10-19'];
   assert.equal(d.puzzles.length, 5);
   assert.equal(d.puzzles[0].attempts, 3);
-  assert.equal(d.puzzles[0].points, 35);
+  assert.equal(d.puzzles[0].seconds, 0);
+  assert.equal(d.puzzles[0].points, puzzlePoints(3, 0, par), 'points are recomputed, never trusted');
   assert.equal(d.puzzles[1].attempts, 0);
+  assert.deepEqual(d.puzzles.map((p) => p.id), ids, 'missing ids are filled in from the day');
+  assert.equal(sanitise({ v: STORE_VERSION, days: { '2026-10-19': { puzzles: [{ seconds: 1e12 }] } } }).days['2026-10-19'].puzzles[0].seconds, 86400);
+  assert.equal(sanitise({ v: STORE_VERSION, days: { '2026-10-19': { puzzles: [{ id: 'gone', attempts: 1, solved: true, points: 77 }] } } }).days['2026-10-19'].puzzles[0].points, 77, 'a retired puzzle keeps its recorded score');
+  assert.equal(sanitise({ v: STORE_VERSION, days: { '2026-10-19': { puzzles: [{ id: 'gone', attempts: 1, solved: true, points: 500 }] } } }).days['2026-10-19'].puzzles[0].points, 100, 'but never more than 100');
+});
+test('version 1 saves, nothing, and non-objects all load as a clean slate; the store survives JSON', () => {
+  for (const raw of [null, undefined, 'x', 5, [], {}, { v: 1, days: { '2026-10-19': { puzzles: [{ attempts: 1, solved: true }] } } }, { v: 2 }, { v: 2, days: 'no' }]) {
+    const s = sanitise(raw);
+    assert.equal(s.v, STORE_VERSION);
+    assert.deepEqual(s.days, {});
+  }
+  let s = emptyStore();
+  s = addSeconds(s, DAY, 0, 33.5); s = recordAttempt(s, DAY, 0, true, PAR);
+  assert.deepEqual(sanitise(JSON.parse(JSON.stringify(s))), s);
+  assert.deepEqual(sanitise(JSON.parse('{"v":2,"days":{"__proto__":{"puzzles":[]},"constructor":{}}}')).days, {});
 });
 
 console.log(`\n${passed} passed`);

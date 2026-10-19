@@ -2,14 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { MAX_ATTEMPTS, PUZZLES } from '@/engineerle/daily';
+import { MAX_ATTEMPTS } from '@/engineerle/scoring';
+import { byId } from '@/engineerle/registry';
 import { STEP, TOL, coupleSum, forceSum, isSmooth, unbalance, type CrankSpec } from '@/engineerle/crank';
 import { sfx } from '@/lib/sfx';
 import { useSettings } from '@/hooks/useSettings';
 import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
 import { box, cyl, outline, setStrut, shadowFloor, steel } from './stage';
 
-const INFO = PUZZLES[3];
+const INFO = byId('engine')!;
 const E = 0.55; // crank radius
 const ROD = 1.75; // connecting rod length
 const SCALE = 1.7; // metres along the shaft to world units

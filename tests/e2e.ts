@@ -7,7 +7,11 @@
 import { chromium, type Browser, type Page } from 'playwright';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { getEngineerleDaily } from '@/engineerle/daily';
-import { solutions as bargeSolutions } from '@/engineerle/barge';
+import { solutions as bargeSolutions, type BargeSpec } from '@/engineerle/barge';
+import type { GraphSpec } from '@/engineerle/graph';
+import type { LeverSpec } from '@/engineerle/lever';
+import type { BridgeSpec } from '@/engineerle/truss';
+import type { CrankSpec } from '@/engineerle/crank';
 
 const PROD = 'http://localhost:4182/';
 const servers: ChildProcess[] = [];
@@ -24,7 +28,14 @@ const text = async (p: Page, id: string) => ((await q(p, id).textContent()) ?? '
 
 const DAY = '2026-11-05';
 const en = getEngineerleDaily(DAY);
-const [gSpec, lSpec, bSpec, eSpec, aSpec] = en.specs;
+const tabOf = (id: string) => en.puzzles.findIndex((x) => x.def.id === id);
+const tab = (id: string) => `ens-tab-${tabOf(id)}`;
+const specOf = (id: string) => en.puzzles[tabOf(id)].spec;
+const gSpec = specOf('waveform') as GraphSpec;
+const lSpec = specOf('lever') as LeverSpec;
+const bSpec = specOf('bridge') as BridgeSpec;
+const eSpec = specOf('engine') as CrankSpec;
+const aSpec = specOf('barge') as BargeSpec;
 const leverAnswer = Math.round(lSpec.answer * 20) / 20;
 const wrongPivot = Math.abs(leverAnswer - -3.5) > 1.5 ? -3.5 : 3.5;
 const bargeAnswer = bargeSolutions(aSpec, 10, 1)[0];
@@ -67,33 +78,33 @@ async function main() {
 
   console.log('Engineerle');
   await t('curve: a wrong equation costs a guess and gives a hint, an unreadable one is free, the right one solves', async () => {
-    const { ctx, page: p, errors } = await openEn(b);
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('waveform')).click();
     await q(p, 'graph-input').fill('x +'); await q(p, 'graph-submit').click(); await q(p, 'graph-msg').waitFor();
     ok((await text(p, 'graph-msg')).includes("didn't use up a guess"), 'free'); eq(await pipsUsed(p), '0', 'no guess used');
     await q(p, 'graph-input').fill('x^2'); await q(p, 'graph-submit').click();
     await p.waitForFunction(() => document.querySelector('[data-testid=graph-msg]')?.textContent?.includes('Hint'));
     eq(await pipsUsed(p), '1', 'one guess used');
     await q(p, 'graph-input').fill(gSpec.answer); await q(p, 'graph-submit').click(); await q(p, 'graph-final').waitFor();
-    ok((await text(p, 'graph-final')).includes('Solved'), 'solved'); eq(await q(p, 'ens-tab-0').getAttribute('data-state'), 'solved', 'tab');
-    await p.reload(); await q(p, 'ens-tab-0').waitFor(); eq(await q(p, 'ens-tab-0').getAttribute('data-state'), 'solved', 'saved');
+    ok((await text(p, 'graph-final')).includes('Solved'), 'solved'); eq(await q(p, tab('waveform')).getAttribute('data-state'), 'solved', 'tab');
+    await p.reload(); await q(p, tab('waveform')).waitFor(); eq(await q(p, tab('waveform')).getAttribute('data-state'), 'solved', 'saved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('three wrong curves end the puzzle and show the answer', async () => {
-    const { ctx, page: p } = await openEn(b);
+    const { ctx, page: p } = await openEn(b); await q(p, tab('waveform')).click();
     for (const guess of ['x', '2x', '3x']) { await q(p, 'graph-input').fill(guess); await q(p, 'graph-submit').click(); await p.waitForTimeout(150); }
     await q(p, 'graph-final').waitFor(); ok((await text(p, 'graph-final')).includes('Out of guesses'), 'out'); ok((await text(p, 'graph-final')).includes(gSpec.answer.replace(/\s/g, '')) || (await text(p, 'graph-final')).includes(gSpec.answer), 'answer shown');
-    eq(await q(p, 'ens-tab-0').getAttribute('data-state'), 'failed', 'tab'); await ctx.close();
+    eq(await q(p, tab('waveform')).getAttribute('data-state'), 'failed', 'tab'); await ctx.close();
   });
   await t('lever: the wrong pivot tips it, the balance point holds it level', async () => {
-    const { ctx, page: p, errors } = await openEn(b); await q(p, 'ens-tab-1').click();
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('lever')).click();
     await q(p, 'lever-slider').fill(String(wrongPivot)); await q(p, 'lever-release').click();
     await q(p, 'lever-msg').waitFor(); ok((await text(p, 'lever-msg')).includes('drops'), 'tipped'); eq(await pipsUsed(p), '1');
     await p.waitForFunction(() => !(document.querySelector('[data-testid=lever-release]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
-    await solveLever(p); ok((await text(p, 'lever-final')).includes('Balanced'), 'balanced'); eq(await q(p, 'ens-tab-1').getAttribute('data-state'), 'solved');
+    await solveLever(p); ok((await text(p, 'lever-final')).includes('Balanced'), 'balanced'); eq(await q(p, tab('lever')).getAttribute('data-state'), 'solved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('bridge: reinforcing the wrong members fails without saying what broke; the weak ones hold', async () => {
-    const { ctx, page: p, errors } = await openEn(b); await q(p, 'ens-tab-2').click();
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('bridge')).click();
     const wrong = Array.from({ length: bSpec.areas.length }, (_, i) => i).filter((i) => !bSpec.weak.includes(i)).slice(0, bSpec.budget);
     for (const i of wrong) await q(p, `bridge-m-${i}`).click();
     eq(await text(p, 'bridge-count').then((x) => x.startsWith(`Reinforced ${bSpec.budget} of ${bSpec.budget}`)), true, 'count');
@@ -102,16 +113,16 @@ async function main() {
     eq(await p.locator('[data-testid^=bridge-m-][data-hit=true]').count(), 0, 'nothing is flagged as the weak member while the puzzle is still open');
     await p.waitForFunction(() => !(document.querySelector('[data-testid=bridge-test]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
     for (const i of wrong) await q(p, `bridge-m-${i}`).click();
-    await solveBridge(p); ok((await text(p, 'bridge-final')).includes('holds'), 'holds'); eq(await q(p, 'ens-tab-2').getAttribute('data-state'), 'solved');
+    await solveBridge(p); ok((await text(p, 'bridge-final')).includes('holds'), 'holds'); eq(await q(p, tab('bridge')).getAttribute('data-state'), 'solved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('bridge: only as many members as the budget can be reinforced', async () => {
-    const { ctx, page: p } = await openEn(b); await q(p, 'ens-tab-2').click();
+    const { ctx, page: p } = await openEn(b); await q(p, tab('bridge')).click();
     for (let i = 0; i <= bSpec.budget; i++) await q(p, `bridge-m-${i}`).click();
     ok((await text(p, 'bridge-count')).startsWith(`Reinforced ${bSpec.budget} of ${bSpec.budget}`), 'capped'); await ctx.close();
   });
   await t('engine: all cranks in line shakes (and unlocks the couple polygon); the balanced setting runs smooth', async () => {
-    const { ctx, page: p, errors } = await openEn(b); await q(p, 'ens-tab-3').click();
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('engine')).click();
     eq(await q(p, 'poly-couple-locked').count(), 1, 'locked at first');
     await q(p, 'engine-start').click(); await q(p, 'engine-msg').waitFor(); ok((await text(p, 'engine-msg')).includes('shakes'), 'shakes');
     eq(await q(p, 'poly-couple').count(), 1, 'unlocked'); eq(await pipsUsed(p), '1');
@@ -120,24 +131,24 @@ async function main() {
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('barge: an unballasted barge lists; the right ballast floats her level', async () => {
-    const { ctx, page: p, errors } = await openEn(b); await q(p, 'ens-tab-4').click();
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('barge')).click();
     await q(p, 'barge-flood').click(); await q(p, 'barge-msg').waitFor({ timeout: 30_000 }); ok((await text(p, 'barge-msg')).includes('floats'), 'listing'); eq(await pipsUsed(p), '1');
     await p.waitForFunction(() => !(document.querySelector('[data-testid=barge-flood]') as HTMLButtonElement | null)?.disabled, null, { timeout: 40_000 });
-    await solveBarge(p); ok((await text(p, 'barge-final')).includes('level'), 'level'); eq(await q(p, 'ens-tab-4').getAttribute('data-state'), 'solved');
+    await solveBarge(p); ok((await text(p, 'barge-final')).includes('level'), 'level'); eq(await q(p, tab('barge')).getAttribute('data-state'), 'solved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('barge: going over the pump limit is refused without using a guess', async () => {
-    const { ctx, page: p } = await openEn(b); await q(p, 'ens-tab-4').click();
+    const { ctx, page: p } = await openEn(b); await q(p, tab('barge')).click();
     for (let i = 0; i < 4; i++) await q(p, `barge-tank-${i}`).fill('110');
     await q(p, 'barge-flood').click(); await q(p, 'barge-msg').waitFor(); ok((await text(p, 'barge-msg')).includes('pump limit'), 'refused'); eq(await pipsUsed(p), '0'); await ctx.close();
   });
   await t('solving all five shows the results, a share text, and survives a reload', async () => {
     const { ctx, page: p, errors } = await openEn(b);
-    await q(p, 'graph-input').fill(gSpec.answer); await q(p, 'graph-submit').click(); await q(p, 'graph-final').waitFor(); await q(p, 'ens-next').click();
-    await solveLever(p); await q(p, 'ens-next').click();
-    await solveBridge(p); await q(p, 'ens-next').click();
-    await solveEngine(p); await q(p, 'ens-next').click();
-    await solveBarge(p); await q(p, 'ens-next').click();
+    const solvers: Record<string, () => Promise<void>> = {
+      waveform: async () => { await q(p, 'graph-input').fill(gSpec.answer); await q(p, 'graph-submit').click(); await q(p, 'graph-final').waitFor(); },
+      lever: () => solveLever(p), bridge: () => solveBridge(p), engine: () => solveEngine(p), barge: () => solveBarge(p),
+    };
+    for (const { def } of en.puzzles) { await solvers[def.id](); await q(p, 'ens-next').click(); }
     await q(p, 'ens-summary').waitFor(); ok(/^https?:\/\/[^/]+\/\?s=\d+\.[01]\.(auto|dark|light)\.[01]\.[01]$/.test((await q(p, 'ens-to-obscura').getAttribute('href')) ?? ''), 'results link to Obscura carries settings'); ok((await text(p, 'ens-points')).startsWith('500'), '500 points'); ok((await text(p, 'ens-squares')).includes('🟩🟩🟩🟩🟩') || (await text(p, 'ens-squares')).replace(/\s/g, '') === '🟩🟩🟩🟩🟩', 'all green');
     await q(p, 'ens-share').click(); await p.waitForTimeout(300);
     const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '');
@@ -153,14 +164,14 @@ async function main() {
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('with no WebGL at all the puzzles still play', async () => {
-    const { ctx, page: p, errors } = await openEn(b, { noGL: true }); await q(p, 'ens-tab-1').click();
-    await q(p, 'lever-slider').waitFor(); await solveLever(p); eq(await q(p, 'ens-tab-1').getAttribute('data-state'), 'solved');
+    const { ctx, page: p, errors } = await openEn(b, { noGL: true }); await q(p, tab('lever')).click();
+    await q(p, 'lever-slider').waitFor(); await solveLever(p); eq(await q(p, tab('lever')).getAttribute('data-state'), 'solved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('Engineerle works on a phone-sized screen', async () => {
     const { ctx, page: p } = await openEn(b, { mobile: true });
     const w = await p.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]); ok(w[0] <= w[1] + 1, `no sideways scroll ${w}`);
-    await q(p, 'ens-tab-3').click(); await q(p, 'engine-start').waitFor();
+    await q(p, tab('engine')).click(); await q(p, 'engine-start').waitFor();
     const w2 = await p.evaluate(() => [document.querySelector('.ens')!.scrollWidth, window.innerWidth]); ok(w2[0] <= w2[1] + 1, `no sideways scroll on the engine ${w2}`); await ctx.close();
   });
 
@@ -183,7 +194,7 @@ async function main() {
     eq(await p.evaluate(() => document.documentElement.dataset.theme), 'light', 'light now');
     eq(await p.evaluate(() => document.documentElement.dataset.perf), 'low', 'low cpu now');
     await q(p, 'settings-close').click();
-    await p.reload(); await q(p, 'ens-tab-0').waitFor();
+    await p.reload(); await q(p, tab('waveform')).waitFor();
     const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('engineerle:v1:settings') ?? '{}'));
     eq(saved.volume, 35, 'volume saved'); eq(saved.muted, true, 'muted saved'); eq(saved.theme, 'light', 'theme saved'); eq(saved.lowCpu, true, 'low cpu saved'); eq(saved.reduceMotion, false, 'motion saved (it started on, following the device, and was switched off)');
     eq(await p.evaluate(() => document.documentElement.dataset.theme), 'light', 'theme kept after reload');

@@ -2,14 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { MAX_ATTEMPTS, PUZZLES } from '@/engineerle/daily';
+import { MAX_ATTEMPTS } from '@/engineerle/scoring';
+import { byId } from '@/engineerle/registry';
 import { LEVEL_HEEL, MIN_FREEBOARD, MIN_GM, RHO, bargeState, isSolved, solutions, withinLimits, PUMP_STEP, type BargeSpec } from '@/engineerle/barge';
 import { sfx } from '@/lib/sfx';
 import { useSettings } from '@/hooks/useSettings';
 import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
 import { box, outline, shadowFloor, steel } from './stage';
 
-const INFO = PUZZLES[4];
+const INFO = byId('barge')!;
 const S = 0.5; // world units per metre
 const FLOOR = -2.2;
 const TANK_NAMES = ['Fore port', 'Fore starboard', 'Aft port', 'Aft starboard'];

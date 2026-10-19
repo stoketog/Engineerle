@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { MAX_ATTEMPTS, PUZZLES } from '@/engineerle/daily';
+import { MAX_ATTEMPTS } from '@/engineerle/scoring';
+import { byId } from '@/engineerle/registry';
 import { DYN_STEP, Dynamics, SAG, UPGRADE, buildTruss, crossBridge, crossingEnd, crossingLoads, crossingSpeed, crossingStart, memberLength, startCollapse, stepCollapse, toM2, utilisation, type BridgeSpec, type Collapse } from '@/engineerle/truss';
 import { useSettings } from '@/hooks/useSettings';
 import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
 import { box, cyl, outline, setStrut, shadowFloor, steel } from './stage';
 
-const INFO = PUZZLES[2];
+const INFO = byId('bridge')!;
 const SIDE = 1.6;
 const WATER_Y = -9;
 
