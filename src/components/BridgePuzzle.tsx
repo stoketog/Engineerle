@@ -3,14 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { MAX_ATTEMPTS, PUZZLES } from '@/engineerle/daily';
-import { UPGRADE, buildTruss, memberLength, solveTruss, startCollapse, toM2, truckLoads, utilisation, type BridgeSpec, type Collapse } from '@/engineerle/truss';
+import { DYN_STEP, Dynamics, SAG, UPGRADE, buildTruss, crossBridge, crossingEnd, crossingLoads, crossingSpeed, crossingStart, memberLength, startCollapse, stepCollapse, toM2, utilisation, type BridgeSpec, type Collapse } from '@/engineerle/truss';
 import { useSettings } from '@/hooks/useSettings';
 import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
 import { box, cyl, outline, setStrut, shadowFloor, steel } from './stage';
 
 const INFO = PUZZLES[2];
 const SIDE = 1.6;
-const SAG = 30; // displacements are drawn this many times larger than real
 const WATER_Y = -9;
 
 type Phase = 'idle' | 'running' | 'collapsing' | 'after';
@@ -173,6 +172,11 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
         pos: rest.map((p) => ({ ...p })),
         u: 0,
         areas: [] as number[],
+        dyn: null as Dynamics | null,
+        n: 0,
+        acc: 0,
+        ut: [] as number[],
+        force: [] as number[],
         peak: new Array<number>(t.members.length).fill(0),
         collapse: null as Collapse | null,
         broken: new Set<number>(),
@@ -182,10 +186,9 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
         sel: [] as number[],
         marks: [] as number[],
         names: '' as string,
-        modes: new Map<number, 'snapped' | 'buckled'>(),
         reported: false,
         result: null as boolean | null,
-        speed: (n + 2 * L0.spec.truck.spacing + 1) / 6,
+        speed: crossingSpeed(t, L0.spec.truck),
       };
 
       const vec = (i: number, s: number) => new THREE.Vector3(ox + sim.pos[i].x, sim.pos[i].y, s * SIDE);
@@ -271,7 +274,6 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
         sim.mode = 'idle';
         sim.pos = rest.map((p) => ({ ...p }));
         sim.broken = new Set();
-        sim.modes = new Map();
         sim.collapse = null;
         sim.splashed = false;
         sim.reported = false;
@@ -295,16 +297,9 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
           setMsg({ k: 'ok', t: `It holds. The hardest-working member, ${nm(wi)}, reached ${Math.round(worst * 100)}% of its capacity.` });
           L.play('correct');
         } else {
-          const how = (i: number) => `${nm(i)} ${sim.modes.get(i) === 'snapped' ? 'snapped in tension' : 'buckled in compression'}`;
-          let tx = `${broken.map(how).join(' and ')}, and the span came down.`;
-          if (attempt === 1) tx += ' Hint: compression members buckle (their strength grows with area squared); tension members stretch and snap.';
-          else if (attempt === 2) {
-            const hidden = L.spec.weak.find((w) => !L.marks.includes(w) && !broken.includes(w) && !sim.sel.includes(w));
-            if (hidden !== undefined) tx += ` Hint: one more weak member is a ${kindOf(L.spec, hidden)}.`;
-          } else tx = `Out of guesses. The weak members were ${L.spec.weak.map(nm).join(', ')}.`;
-          setMsg({ k: attempt >= MAX_ATTEMPTS ? 'bad' : 'hint', t: tx });
-          setMarks((m) => Array.from(new Set([...m, ...broken])));
-          sim.marks = Array.from(new Set([...sim.marks, ...broken]));
+          const out = attempt >= MAX_ATTEMPTS;
+          const tx = out ? `Out of guesses. The weak members were ${L.spec.weak.map(nm).join(', ')}.` : 'The truck went through: the span could not carry it.';
+          setMsg({ k: out ? 'bad' : 'hint', t: tx });
           L.play('wrong');
         }
         L.onAttempt(ok);
@@ -338,35 +333,27 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
         if (sim.mode !== 'idle') return;
         setMsg(null);
         sim.sel = s;
-        const areas = L0.spec.areas.map((a, i) => toM2(a * (s.includes(i) ? UPGRADE : 1)));
-        sim.areas = areas;
+        const areasCm2 = L0.spec.areas.map((a, i) => a * (s.includes(i) ? UPGRADE : 1));
+        sim.areas = areasCm2.map(toM2);
         sim.peak.fill(0);
-        sim.u = -L0.spec.truck.spacing - 0.5;
+        sim.dyn = new Dynamics(t, sim.areas);
+        sim.n = 0;
+        sim.acc = 0;
+        sim.ut = [];
+        sim.u = crossingStart(L0.spec.truck);
         sim.mode = 'running';
         setPhase('running');
         latest.current.play('rumble', 0.2);
         if (latest.current.settings.reduceMotion) {
-          // no animation: step through the crossing at once
-          let failedAt = -1;
-          for (let u = sim.u; u <= n + 1; u += 0.1) {
-            const sol = solveTruss(t, areas, truckLoads(t, L0.spec.truck, u));
-            const ut = sol.force.map((f, i) => utilisation(f, areas[i], L0.lens[i]));
-            ut.forEach((v, i) => (sim.peak[i] = Math.max(sim.peak[i], v)));
-            const over = ut.map((v, i) => (v > 1 ? i : -1)).filter((i) => i >= 0);
-            if (over.length) {
-              over.forEach((i) => {
-                sim.broken.add(i);
-                sim.modes.set(i, sol.force[i] >= 0 ? 'snapped' : 'buckled');
-              });
-              failedAt = u;
-              break;
-            }
-          }
+          // no animation: the same crossing, run at once, gives the same answer
+          const cr = crossBridge(t, areasCm2, L0.spec.truck);
+          cr.peak.forEach((v, i) => (sim.peak[i] = v));
+          cr.first?.members.forEach((i) => sim.broken.add(i));
           sim.mode = 'after';
           setPhase('after');
           setPeak(Math.max(...sim.peak));
           paint(null, null);
-          finish(failedAt < 0, Array.from(sim.broken));
+          finish(cr.ok, Array.from(sim.broken));
           timers.push(window.setTimeout(reset, 400));
         }
       };
@@ -407,42 +394,53 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
           p.needsUpdate = true;
           waterGeo.computeVertexNormals();
         }
-        if (sim.mode === 'running') {
-          sim.u += sim.speed * dt;
+        if (sim.mode === 'running' && sim.dyn) {
           const L = latest.current;
-          const sol = solveTruss(t, sim.areas, truckLoads(t, L.spec.truck, sim.u));
-          const ut = sol.force.map((f, i) => utilisation(f, sim.areas[i], L.lens[i]));
-          ut.forEach((v, i) => (sim.peak[i] = Math.max(sim.peak[i], v)));
-          const worst = Math.max(...ut);
-          sim.pos = rest.map((p, i) => ({ x: p.x + sol.disp[2 * i] * SAG, y: p.y + sol.disp[2 * i + 1] * SAG }));
-          paint(ut, sol.force);
-          if (worst > 0.88 && tt - sim.creakAt > 0.9) {
-            sim.creakAt = tt;
-            L.play('creak', Math.min(1, (worst - 0.88) / 0.2));
+          const truck = L.spec.truck;
+          // whole fixed steps only, so the crossing is the same at any frame rate
+          sim.acc += Math.min(dt, 0.1);
+          let failedNow = false;
+          while (sim.acc >= DYN_STEP - 1e-9) {
+            sim.acc -= DYN_STEP;
+            sim.n++;
+            sim.dyn.step(crossingLoads(t, truck, sim.n));
+            sim.force = sim.dyn.force();
+            sim.ut = sim.force.map((f, i) => utilisation(f, sim.areas[i], L.lens[i]));
+            sim.ut.forEach((v, i) => (sim.peak[i] = Math.max(sim.peak[i], v)));
+            sim.u = crossingStart(truck) + sim.speed * sim.n * DYN_STEP;
+            if (sim.ut.some((v) => v > 1)) {
+              failedNow = true;
+              break;
+            }
+            if (sim.u > crossingEnd(t, truck)) break;
           }
-          if (worst > 1) {
-            ut.forEach((v, i) => {
-              if (v > 1) {
-                sim.broken.add(i);
-                sim.modes.set(i, sol.force[i] >= 0 ? 'snapped' : 'buckled');
-              }
-            });
-            L.play('crack');
-            // the truck's weight rides on the deck joints nearest it
-            const fi = Math.max(0, Math.min(n, Math.round(sim.u)));
-            sim.collapse = startCollapse(t, sim.broken, sol.disp, [{ node: fi, mass: 4 }], WATER_Y + 0.3);
-            sim.mode = 'collapsing';
-            sim.clock = 0;
-          } else if (sim.u > n + 1.2) {
+          if (sim.ut.length) {
+            const worst = Math.max(...sim.ut);
+            sim.pos = rest.map((p, i) => ({ x: p.x + sim.dyn!.u[2 * i] * SAG, y: p.y + sim.dyn!.u[2 * i + 1] * SAG }));
+            paint(sim.ut, sim.force);
+            if (worst > 0.88 && tt - sim.creakAt > 0.9) {
+              sim.creakAt = tt;
+              L.play('creak', Math.min(1, (worst - 0.88) / 0.2));
+            }
+            if (failedNow) {
+              sim.ut.forEach((v, i) => v > 1 && sim.broken.add(i));
+              L.play('crack');
+              // the truck's weight rides on the deck joint nearest it; the collapse starts from the shape on screen
+              const fi = Math.max(0, Math.min(n, Math.round(sim.u)));
+              sim.collapse = startCollapse(t, sim.broken, sim.dyn.u, [{ node: fi, mass: 4 }], WATER_Y + 0.3);
+              sim.mode = 'collapsing';
+              sim.clock = 0;
+            } else if (sim.u > crossingEnd(t, truck)) {
+              setPeak(Math.max(...sim.peak));
+              paint(null, null);
+              sim.pos = rest.map((p) => ({ ...p }));
+              endRun(true);
+            }
             setPeak(Math.max(...sim.peak));
-            paint(null, null);
-            sim.pos = rest.map((p) => ({ ...p }));
-            endRun(true);
           }
-          setPeak(Math.max(...sim.peak));
         } else if (sim.mode === 'collapsing' && sim.collapse) {
           sim.clock += dt;
-          sim.collapse.step(Math.min(dt, 1 / 30));
+          stepCollapse(sim.collapse, Math.min(dt, 0.1));
           sim.pos = sim.collapse.pos.map((p) => ({ x: p.x, y: p.y }));
           // the truck keeps riding the deck
           sim.u += sim.speed * dt * 0.3;
@@ -512,7 +510,7 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
                       toggle(i);
                     }}
                     aria-pressed={sel.includes(i)}
-                    aria-label={`${memberName(spec, i)}, ${kindOf(spec, i)}, ${spec.areas[i]} square centimetres${marks.includes(i) ? ', broke before' : ''}`}
+                    aria-label={`${memberName(spec, i)}, ${kindOf(spec, i)}, ${spec.areas[i]} square centimetres${marks.includes(i) ? ', one of the weak members' : ''}`}
                     data-testid={`bridge-m-${i}`}
                     data-silent
                   >

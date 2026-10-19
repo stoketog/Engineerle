@@ -14,6 +14,11 @@ export const YIELD = 250e6; // Pa
 export const I_FACTOR = 2 / 3;
 export const UPGRADE = 2;
 const g = 9.81;
+export const GRAVITY = g;
+/** The drawing exaggerates real displacements by this factor so a few millimetres of sag can be seen. */
+export const SAG = 30;
+/** The bridge's own weight on each bottom and top joint (N). */
+export const DEAD = { bottom: 9000, top: 3500 };
 
 export interface Truss {
   panels: number;
@@ -68,6 +73,83 @@ function solveDense(A: number[][], b: number[]): number[] {
   return x;
 }
 
+/** LU factorisation with partial pivoting, for solving many right-hand sides against one matrix. */
+interface Lu {
+  lu: number[][];
+  piv: number[];
+}
+function luFactor(A: number[][]): Lu {
+  const n = A.length;
+  const lu = A.map((r) => r.slice());
+  const piv = Array.from({ length: n }, (_, i) => i);
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(lu[r][c]) > Math.abs(lu[p][c])) p = r;
+    if (Math.abs(lu[p][c]) < 1e-18) throw new Error('mechanism');
+    if (p !== c) {
+      [lu[c], lu[p]] = [lu[p], lu[c]];
+      [piv[c], piv[p]] = [piv[p], piv[c]];
+    }
+    for (let r = c + 1; r < n; r++) {
+      const f = (lu[r][c] /= lu[c][c]);
+      if (!f) continue;
+      for (let k = c + 1; k < n; k++) lu[r][k] -= f * lu[c][k];
+    }
+  }
+  return { lu, piv };
+}
+function luSolve({ lu, piv }: Lu, b: number[]): number[] {
+  const n = b.length;
+  const x = piv.map((p) => b[p]);
+  for (let r = 1; r < n; r++) {
+    let sum = x[r];
+    for (let k = 0; k < r; k++) sum -= lu[r][k] * x[k];
+    x[r] = sum;
+  }
+  for (let r = n - 1; r >= 0; r--) {
+    let sum = x[r];
+    for (let k = r + 1; k < n; k++) sum -= lu[r][k] * x[k];
+    x[r] = sum / lu[r][r];
+  }
+  return x;
+}
+
+/** Global stiffness matrix (N/m), two freedoms per joint. Members in `skip` are left out. */
+function assembleK(t: Truss, areas: number[], skip?: Set<number>): number[][] {
+  const dof = 2 * t.nodes.length;
+  const K = Array.from({ length: dof }, () => new Array<number>(dof).fill(0));
+  t.members.forEach((m, i) => {
+    if (skip?.has(i)) return;
+    const dx = t.nodes[m.b].x - t.nodes[m.a].x, dy = t.nodes[m.b].y - t.nodes[m.a].y;
+    const L = Math.hypot(dx, dy);
+    const c = dx / L, s = dy / L;
+    const k = (E * areas[i]) / L;
+    const idx = [2 * m.a, 2 * m.a + 1, 2 * m.b, 2 * m.b + 1];
+    const v = [-c, -s, c, s];
+    for (let p = 0; p < 4; p++) for (let q = 0; q < 4; q++) K[idx[p]][idx[q]] += k * v[p] * v[q];
+  });
+  return K;
+}
+
+/** The freedoms that can move: everything except the pin at joint 0 and the roller under the last bottom joint. */
+function freeDofs(t: Truss): number[] {
+  const fixed = new Set([0, 1, 2 * t.panels + 1]);
+  const free: number[] = [];
+  for (let d = 0; d < 2 * t.nodes.length; d++) if (!fixed.has(d)) free.push(d);
+  return free;
+}
+
+/** Axial force in every member (N, + tension) for joint displacements `u`. */
+function axialForces(t: Truss, areas: number[], u: number[], skip?: Set<number>): number[] {
+  return t.members.map((m, i) => {
+    if (skip?.has(i)) return 0;
+    const dx = t.nodes[m.b].x - t.nodes[m.a].x, dy = t.nodes[m.b].y - t.nodes[m.a].y;
+    const L = Math.hypot(dx, dy);
+    const ext = ((u[2 * m.b] - u[2 * m.a]) * dx + (u[2 * m.b + 1] - u[2 * m.a + 1]) * dy) / L;
+    return (E * areas[i] * ext) / L;
+  });
+}
+
 export interface Solution {
   /** Axial force in each member (N, positive = tension). */
   force: number[];
@@ -82,36 +164,15 @@ export interface Solution {
  * Supports: a pin at the first bottom joint, a roller at the last.
  */
 export function solveTruss(t: Truss, areas: number[], loads: number[], skip?: Set<number>): Solution {
-  const n = t.nodes.length;
-  const dof = 2 * n;
-  const K = Array.from({ length: dof }, () => new Array<number>(dof).fill(0));
-  t.members.forEach((m, i) => {
-    if (skip?.has(i)) return;
-    const dx = t.nodes[m.b].x - t.nodes[m.a].x, dy = t.nodes[m.b].y - t.nodes[m.a].y;
-    const L = Math.hypot(dx, dy);
-    const c = dx / L, s = dy / L;
-    const k = (E * areas[i]) / L;
-    const idx = [2 * m.a, 2 * m.a + 1, 2 * m.b, 2 * m.b + 1];
-    const v = [-c, -s, c, s];
-    for (let p = 0; p < 4; p++) for (let q = 0; q < 4; q++) K[idx[p]][idx[q]] += k * v[p] * v[q];
-  });
+  const dof = 2 * t.nodes.length;
+  const K = assembleK(t, areas, skip);
   const last = t.panels;
-  const fixed = new Set([0, 1, 2 * last + 1]);
-  const free: number[] = [];
-  for (let d = 0; d < dof; d++) if (!fixed.has(d)) free.push(d);
+  const free = freeDofs(t);
   const Kf = free.map((r) => free.map((c) => K[r][c]));
-  const ff = free.map((d) => loads[d]);
-  const uf = solveDense(Kf, ff);
+  const uf = solveDense(Kf, free.map((d) => loads[d]));
   const u = new Array<number>(dof).fill(0);
   free.forEach((d, i) => (u[d] = uf[i]));
-  const force = t.members.map((m, i) => {
-    if (skip?.has(i)) return 0;
-    const dx = t.nodes[m.b].x - t.nodes[m.a].x, dy = t.nodes[m.b].y - t.nodes[m.a].y;
-    const L = Math.hypot(dx, dy);
-    const c = dx / L, s = dy / L;
-    const ext = (u[2 * m.b] - u[2 * m.a]) * c + (u[2 * m.b + 1] - u[2 * m.a + 1]) * s;
-    return (E * areas[i] * ext) / L;
-  });
+  const force = axialForces(t, areas, u, skip);
   // reactions: R = K u − f at the fixed freedoms
   const react = (d: number) => {
     let r = -loads[d];
@@ -131,7 +192,7 @@ export interface Truck {
 }
 
 /** Nodal loads for a truck whose front axle is at deck position `u` (in panels), plus the bridge's own weight. */
-export function truckLoads(t: Truss, truck: Truck, u: number, dead = { bottom: 9000, top: 3500 }): number[] {
+export function truckLoads(t: Truss, truck: Truck, u: number, dead = DEAD): number[] {
   const n = t.nodes.length;
   const f = new Array<number>(2 * n).fill(0);
   for (let i = 0; i <= t.panels; i++) f[2 * i + 1] -= dead.bottom;
@@ -159,6 +220,210 @@ export function capacity(area: number, length: number, compression: boolean): nu
 /** Force as a fraction of capacity (above 1 the member fails). */
 export function utilisation(force: number, area: number, length: number): number {
   return Math.abs(force) / capacity(area, length, force < 0);
+}
+
+/* ───────────────────────────── the moving load, dynamically ───────────────────────────── */
+
+/** Fixed time step for everything that moves (s). The animation advances in whole steps, so it looks the same at any frame rate. */
+export const DYN_STEP = 1 / 240;
+
+export interface DynamicsOptions {
+  /** Damping ratio of the first mode (Rayleigh, stiffness-proportional). Real steel bridges sit around 0.01 to 0.05. */
+  zeta?: number;
+  dead?: { bottom: number; top: number };
+}
+
+/**
+ * The truss as a lumped-mass vibrating structure, M u'' + C u' + K u = f(t).
+ *
+ * - K is the same finite-element stiffness matrix the static solver uses.
+ * - M is lumped at the joints from the bridge's own weight (weight / g).
+ * - C = beta K with beta = 2 zeta / omega1, so the first mode has exactly the damping ratio asked for and
+ *   higher modes are damped more.
+ * - Time stepping is the Newmark average-acceleration method (the trapezoidal rule): second-order accurate,
+ *   stable at any step, and it adds no damping of its own, so the energy bookkeeping is exact.
+ * - The truck is a moving force (the usual idealisation when the bridge is the thing being studied).
+ *
+ * It starts at rest in the shape the bridge's own weight gives it.
+ */
+export class Dynamics {
+  readonly free: number[];
+  /** Mass at every freedom (kg). */
+  readonly mass: number[];
+  /** First natural frequency (rad/s) and its shape (largest entry 1). */
+  readonly omega1: number;
+  readonly mode1: number[];
+  readonly dt: number;
+  u: number[];
+  v: number[];
+  a: number[];
+  time = 0;
+  /** Work done on the structure by the loads so far (J). */
+  work = 0;
+  private readonly t: Truss;
+  private readonly areas: number[];
+  private readonly Kf: number[][];
+  private readonly beta: number;
+  private readonly lu: Lu;
+  private readonly mf: number[];
+  private last: number[];
+
+  constructor(t: Truss, areas: number[], dt = DYN_STEP, opts: DynamicsOptions = {}) {
+    const dead = opts.dead ?? DEAD;
+    const zeta = opts.zeta ?? 0.05;
+    this.t = t;
+    this.areas = areas;
+    this.dt = dt;
+    const nn = t.nodes.length;
+    this.mass = new Array<number>(2 * nn).fill(0);
+    for (let i = 0; i < nn; i++) {
+      const m = (i <= t.panels ? dead.bottom : dead.top) / g;
+      this.mass[2 * i] = m;
+      this.mass[2 * i + 1] = m;
+    }
+    this.free = freeDofs(t);
+    const K = assembleK(t, areas);
+    this.Kf = this.free.map((r) => this.free.map((c) => K[r][c]));
+    this.mf = this.free.map((d) => this.mass[d]);
+    // first mode: inverse iteration on K x = lambda M x
+    const kLu = luFactor(this.Kf);
+    let x = this.free.map(() => 1);
+    let lambda = 0;
+    for (let it = 0; it < 400; it++) {
+      const y = luSolve(kLu, x.map((xi, i) => xi * this.mf[i]));
+      const big = Math.max(...y.map(Math.abs));
+      const nx = y.map((yi) => yi / big);
+      const kx = this.Kf.map((row) => row.reduce((acc, kij, j) => acc + kij * nx[j], 0));
+      const num = nx.reduce((acc, xi, i) => acc + xi * kx[i], 0);
+      const den = nx.reduce((acc, xi, i) => acc + xi * xi * this.mf[i], 0);
+      const next = num / den;
+      x = nx;
+      if (Math.abs(next - lambda) <= 1e-13 * next) {
+        lambda = next;
+        break;
+      }
+      lambda = next;
+    }
+    this.omega1 = Math.sqrt(lambda);
+    this.mode1 = new Array<number>(2 * nn).fill(0);
+    this.free.forEach((d, i) => (this.mode1[d] = x[i]));
+    this.beta = (2 * zeta) / this.omega1;
+    // effective stiffness for Newmark (beta_N = 1/4, gamma = 1/2): (1 + 2 beta / dt) K + 4 M / dt^2
+    const kScale = 1 + (2 * this.beta) / dt;
+    this.lu = luFactor(this.Kf.map((row, i) => row.map((v, j) => kScale * v + (i === j ? (4 * this.mf[i]) / (dt * dt) : 0))));
+    // start at rest under the bridge's own weight
+    const f0 = truckLoads(t, { weight: 0, spacing: 1, front: 0.5 }, -99, dead);
+    const u0 = luSolve(kLu, this.free.map((d) => f0[d]));
+    this.u = new Array<number>(2 * nn).fill(0);
+    this.free.forEach((d, i) => (this.u[d] = u0[i]));
+    this.v = new Array<number>(2 * nn).fill(0);
+    this.a = new Array<number>(2 * nn).fill(0);
+    this.last = f0;
+  }
+
+  /** Advance one step under the loads at the end of the step (N, two per joint, own weight included). */
+  step(loads: number[]) {
+    const { free, dt, mf, beta } = this;
+    const un = free.map((d) => this.u[d]), vn = free.map((d) => this.v[d]), an = free.map((d) => this.a[d]);
+    // rhs = f + M (4 u/dt^2 + 4 v/dt + a) + C (2 u/dt + v)
+    const w = un.map((x, i) => (2 * x) / dt + vn[i]);
+    const cw = this.Kf.map((row) => beta * row.reduce((acc, kij, j) => acc + kij * w[j], 0));
+    const rhs = free.map((d, i) => loads[d] + mf[i] * ((4 * un[i]) / (dt * dt) + (4 * vn[i]) / dt + an[i]) + cw[i]);
+    const un1 = luSolve(this.lu, rhs);
+    let work = 0;
+    free.forEach((d, i) => {
+      const a1 = (4 * (un1[i] - un[i])) / (dt * dt) - (4 * vn[i]) / dt - an[i];
+      const v1 = vn[i] + 0.5 * dt * (an[i] + a1);
+      this.u[d] = un1[i];
+      this.v[d] = v1;
+      this.a[d] = a1;
+      work += 0.5 * (this.last[d] + loads[d]) * (un1[i] - un[i]);
+    });
+    this.work += work;
+    this.last = loads;
+    this.time += dt;
+  }
+
+  /** Axial force in each member for the present shape (N, + tension). */
+  force(): number[] {
+    return axialForces(this.t, this.areas, this.u);
+  }
+
+  energy() {
+    let kinetic = 0, strain = 0;
+    this.free.forEach((d, i) => {
+      kinetic += 0.5 * this.mf[i] * this.v[d] * this.v[d];
+      strain += 0.5 * this.u[d] * this.Kf[i].reduce((acc, kij, j) => acc + kij * this.u[this.free[j]], 0);
+    });
+    return { kinetic, strain };
+  }
+}
+
+/** The truck rolls at this speed (deck panels per second). */
+export const crossingSpeed = (t: Truss, truck: Truck) => (t.panels + 2 * truck.spacing + 1) / 6;
+/** Front axle position when the crossing starts, and when it is over (deck panels). */
+export const crossingStart = (truck: Truck) => -truck.spacing - 0.5;
+export const crossingEnd = (t: Truss, truck: Truck) => t.panels + truck.spacing + 0.5;
+
+/** The loads at step n of a crossing (n counts from 1). Shared by the animation and the headless run so they agree exactly. */
+export function crossingLoads(t: Truss, truck: Truck, n: number, dt = DYN_STEP): number[] {
+  return truckLoads(t, truck, crossingStart(truck) + crossingSpeed(t, truck) * n * dt);
+}
+
+export interface DynamicRun {
+  time: number[];
+  /** Joint displacements at each step. */
+  disp: number[][];
+  /** Highest utilisation of any member at each step. */
+  maxUtil: number[];
+}
+
+/** Run the truck over the bridge for `steps` steps of `dt` seconds. */
+export function dynamicResponse(t: Truss, areas: number[], truck: Truck, dt: number, steps: number): DynamicRun {
+  const d = new Dynamics(t, areas, dt);
+  const lens = t.members.map((_, i) => memberLength(t, i));
+  const out: DynamicRun = { time: [], disp: [], maxUtil: [] };
+  for (let n = 1; n <= steps; n++) {
+    d.step(crossingLoads(t, truck, n, dt));
+    out.time.push(d.time);
+    out.disp.push(d.u.slice());
+    const f = d.force();
+    out.maxUtil.push(Math.max(...f.map((x, i) => utilisation(x, areas[i], lens[i]))));
+  }
+  return out;
+}
+
+export interface Crossing {
+  /** Highest utilisation of each member over the whole crossing, as if nothing gave way. */
+  peak: number[];
+  /** Members that went over capacity at some point. */
+  failed: number[];
+  ok: boolean;
+  /** The step at which something first gave way, and what gave way, or null. */
+  first: { step: number; members: number[] } | null;
+}
+
+/** A whole crossing, headless. `areasCm2` are the section areas in cm². */
+export function crossBridge(t: Truss, areasCm2: number[], truck: Truck, dt = DYN_STEP): Crossing {
+  const areas = areasCm2.map(toM2);
+  const lens = t.members.map((_, i) => memberLength(t, i));
+  const d = new Dynamics(t, areas, dt);
+  const peak = new Array<number>(t.members.length).fill(0);
+  let first: Crossing['first'] = null;
+  const steps = Math.ceil((crossingEnd(t, truck) - crossingStart(truck)) / (crossingSpeed(t, truck) * dt));
+  for (let n = 1; n <= steps; n++) {
+    d.step(crossingLoads(t, truck, n, dt));
+    const f = d.force();
+    const over: number[] = [];
+    f.forEach((x, i) => {
+      const u = utilisation(x, areas[i], lens[i]);
+      peak[i] = Math.max(peak[i], u);
+      if (u > 1) over.push(i);
+    });
+    if (over.length && !first) first = { step: n, members: over };
+  }
+  const failed = peak.map((u, i) => (u > 1 ? i : -1)).filter((i) => i >= 0);
+  return { peak, failed, ok: failed.length === 0, first };
 }
 
 export interface BridgeSpec {
@@ -235,8 +500,8 @@ export function makeBridge(seed: number): BridgeSpec {
       return areaFor(tens[i], comp[i], lens[i], util);
     });
     // check: the weak ones fail as built, and pass once upgraded; nobody else fails
-    const env = envelope(t, areas, truck);
-    const up = envelope(t, areas.map((a, i) => (weak.includes(i) ? a * UPGRADE : a)), truck);
+    const env = crossBridge(t, areas, truck).peak;
+    const up = crossBridge(t, areas.map((a, i) => (weak.includes(i) ? a * UPGRADE : a)), truck).peak;
     const okWeak = weak.every((i) => env[i] > 1.02 && up[i] <= 0.98);
     const okRest = env.every((u, i) => weak.includes(i) || u <= 0.9);
     if (okWeak && okRest) return { kind: 'bridge', panels, areas, truck, budget: k, weak: weak.sort((a, b) => a - b) };
@@ -254,72 +519,97 @@ export function makeBridge(seed: number): BridgeSpec {
 
 /* ───────────────────────────── the collapse ───────────────────────────── */
 
+/** The collapse always advances in whole steps of this length, so it is the same at any frame rate. */
+export const COLLAPSE_STEP = 1 / 240;
+/** Fraction of its speed a joint loses per second (water, friction, joint slop). */
+const DRAG = 0.8;
+const ITERATIONS = 16;
+
 export interface Collapse {
   pos: Array<{ x: number; y: number }>;
-  step(dt: number): void;
   alive: boolean[];
   /** The river surface: nothing falls below this. */
   floor: number;
+  /** Time not yet used up by a whole step. */
+  carry: number;
+  advance(): void;
 }
 
 /**
  * A Verlet particle model of the failed bridge: joints are particles, intact members are rigid links, the
- * broken ones are gone, and gravity does the rest.
+ * broken ones are gone, and gravity does the rest. It starts from the shape that is on screen (the real
+ * displacements times `sag`), and each link's rest length is its length in that shape, so nothing is
+ * stretched or squeezed at the first frame.
  */
-export function startCollapse(t: Truss, broken: Set<number>, disp: number[], extra: Array<{ node: number; mass: number }> = [], floor = -14): Collapse {
+export function startCollapse(t: Truss, broken: Set<number>, disp: number[], extra: Array<{ node: number; mass: number }> = [], floor = -14, sag = SAG): Collapse {
   const n = t.nodes.length;
-  const pos = t.nodes.map((p, i) => ({ x: p.x + disp[2 * i] * 30, y: p.y + disp[2 * i + 1] * 30 }));
+  const pos = t.nodes.map((p, i) => ({ x: p.x + disp[2 * i] * sag, y: p.y + disp[2 * i + 1] * sag }));
   const prev = pos.map((p) => ({ ...p }));
   const mass = new Array<number>(n).fill(1);
   for (const e of extra) mass[e.node] += e.mass;
   const alive = t.members.map((_, i) => !broken.has(i));
-  const rest = t.members.map((m, i) => Math.hypot(t.nodes[m.b].x - t.nodes[m.a].x, t.nodes[m.b].y - t.nodes[m.a].y) + 0 * i);
-  const pinned = new Set([0]);
+  const rest = t.members.map((m) => Math.hypot(pos[m.b].x - pos[m.a].x, pos[m.b].y - pos[m.a].y));
+  const x0 = pos[0].x, y0 = pos[0].y;
   const roller = t.panels;
+  const rollerX = pos[roller].x, rollerY = pos[roller].y;
+  const h = COLLAPSE_STEP;
+  const keep = Math.exp(-DRAG * h);
   const c: Collapse = {
     pos,
     alive,
     floor,
-    step(dt: number) {
-      const sub = 3;
-      const h = dt / sub;
-      for (let s = 0; s < sub; s++) {
-        for (let i = 0; i < n; i++) {
-          if (pinned.has(i)) continue;
-          const p = pos[i], q = prev[i];
-          const vx = (p.x - q.x) * 0.998, vy = (p.y - q.y) * 0.998;
-          q.x = p.x;
-          q.y = p.y;
-          p.x += vx;
-          p.y += vy - g * h * h;
-          if (i === roller) p.y = Math.max(p.y, t.nodes[roller].y - 0.0); // a roller bearing holds it only if the span still stands
+    carry: 0,
+    advance() {
+      for (let i = 0; i < n; i++) {
+        if (i === 0) continue;
+        const p = pos[i], q = prev[i];
+        const vx = (p.x - q.x) * keep, vy = (p.y - q.y) * keep;
+        q.x = p.x;
+        q.y = p.y;
+        p.x += vx;
+        p.y += vy - g * h * h;
+      }
+      for (let it = 0; it < ITERATIONS; it++) {
+        t.members.forEach((m, k) => {
+          if (!alive[k]) return;
+          const a = pos[m.a], b = pos[m.b];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const d = Math.hypot(dx, dy) || 1e-9;
+          const diff = (d - rest[k]) / d;
+          const wa = m.a === 0 ? 0 : 1 / mass[m.a], wb = m.b === 0 ? 0 : 1 / mass[m.b];
+          const ws = wa + wb;
+          if (!ws) return;
+          a.x += (dx * diff * wa) / ws;
+          a.y += (dy * diff * wa) / ws;
+          b.x -= (dx * diff * wb) / ws;
+          b.y -= (dy * diff * wb) / ws;
+        });
+        // the roller sits on its pad and holds its joint up (inelastically: it kills the downward speed), but only
+        // while the joint is still over the pad; once the span drags it inward past the edge it falls with the rest
+        const r = pos[roller];
+        if (r.x >= rollerX - 0.02 && r.y < rollerY) {
+          r.y = rollerY;
+          prev[roller].y = rollerY;
         }
-        for (let it = 0; it < 14; it++) {
-          t.members.forEach((m, k) => {
-            if (!alive[k]) return;
-            const a = pos[m.a], b = pos[m.b];
-            const dx = b.x - a.x, dy = b.y - a.y;
-            const d = Math.hypot(dx, dy) || 1e-9;
-            const diff = (d - rest[k]) / d;
-            const wa = pinned.has(m.a) ? 0 : 1 / mass[m.a], wb = pinned.has(m.b) ? 0 : 1 / mass[m.b];
-            const ws = wa + wb;
-            if (!ws) return;
-            a.x += (dx * diff * wa) / ws;
-            a.y += (dy * diff * wa) / ws;
-            b.x -= (dx * diff * wb) / ws;
-            b.y -= (dy * diff * wb) / ws;
-          });
-          pos.forEach((p, i) => {
-            if (p.y < floor) {
-              p.y = floor;
-              prev[i].x = p.x - (p.x - prev[i].x) * 0.3;
-            }
-          });
-          pos[0].x = t.nodes[0].x;
-          pos[0].y = t.nodes[0].y;
-        }
+        pos[0].x = x0;
+        pos[0].y = y0;
+        pos.forEach((p, i) => {
+          if (p.y < floor) {
+            p.y = floor;
+            prev[i].x = p.x - (p.x - prev[i].x) * 0.3;
+          }
+        });
       }
     },
   };
   return c;
+}
+
+/** Advance the collapse by `dt` seconds of real time, in whole fixed steps (leftover time carries to the next call). */
+export function stepCollapse(c: Collapse, dt: number) {
+  c.carry += dt;
+  while (c.carry >= COLLAPSE_STEP - 1e-9) {
+    c.advance();
+    c.carry -= COLLAPSE_STEP;
+  }
 }
