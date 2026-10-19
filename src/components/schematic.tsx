@@ -86,3 +86,26 @@ export function Meter({ x, y, letter, reading, testId, inline = false, plus }: {
     </g>
   );
 }
+
+/** A capacitor between two points that lie on a horizontal or vertical line: two plates with the leads running to them, and a label. */
+export function Capacitor({ x1, y1, x2, y2, name, value, side = 'above' }: { x1: number; y1: number; x2: number; y2: number; name: string; value: string; side?: 'above' | 'below' | 'left' | 'right' }) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const L = Math.hypot(dx, dy);
+  const ux = dx / L, uy = dy / L, nx = -uy, ny = ux;
+  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+  const gap = 4, half = 11;
+  const p = (t: number, off = 0): [number, number] => [x1 + ux * t + nx * off, y1 + uy * t + ny * off];
+  const a = L / 2 - gap, b = L / 2 + gap;
+  const lab = 20;
+  const [tx, ty, anchor] = side === 'above' ? [mx, my - lab - 6, 'middle'] : side === 'below' ? [mx, my + lab + 12, 'middle'] : side === 'left' ? [mx - lab, my - 2, 'end'] : [mx + lab, my - 2, 'start'];
+  return (
+    <g>
+      <line x1={x1} y1={y1} x2={p(a)[0]} y2={p(a)[1]} />
+      <line x1={p(b)[0]} y1={p(b)[1]} x2={x2} y2={y2} />
+      <line x1={p(a, -half)[0]} y1={p(a, -half)[1]} x2={p(a, half)[0]} y2={p(a, half)[1]} strokeWidth="2.6" />
+      <line x1={p(b, -half)[0]} y1={p(b, -half)[1]} x2={p(b, half)[0]} y2={p(b, half)[1]} strokeWidth="2.6" />
+      <text x={tx} y={ty} textAnchor={anchor as 'start' | 'middle' | 'end'} fontSize="12" fontWeight="700" fill={ACCENT} stroke="none">{name}</text>
+      <text x={tx} y={ty + 13} textAnchor={anchor as 'start' | 'middle' | 'end'} fontSize="12" fill={ACCENT} stroke="none" fontWeight="700">{value}</text>
+    </g>
+  );
+}
