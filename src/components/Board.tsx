@@ -6,7 +6,9 @@ import type { PuzzleDef } from '@/engineerle/registry';
 import type { PuzzleRecord } from '@/engineerle/store';
 import { resolveTheme } from '@/lib/settings';
 import { useSettings } from '@/hooks/useSettings';
+import { formatClock } from '@/hooks/useStopwatch';
 import { Stage, type Theme } from './stage';
+import { useClock } from './clock';
 
 export interface PuzzleProps<S> {
   spec: S;
@@ -25,6 +27,27 @@ export function Pips({ record }: { record: PuzzleRecord }) {
   );
 }
 
+/** The guess counter, the running time and the par time, stacked at the top right of a puzzle. */
+export function ClockFace({ record }: { record: PuzzleRecord }) {
+  const { seconds, par } = useClock();
+  const over = !record.done && seconds > par;
+  return (
+    <div className="ens-clock">
+      <span className="ens-timer" data-over={over} data-testid="ens-timer" role="timer" aria-label={`Time on this puzzle ${formatClock(seconds)}`}>
+        {formatClock(seconds)}
+      </span>
+      <span className="ens-par" data-testid="ens-par">par {formatClock(par)}</span>
+      <Pips record={record} />
+    </div>
+  );
+}
+
+/** What is left to say after a miss that is not the last: how many guesses remain. */
+export const guessesLeft = (used: number) => {
+  const n = Math.max(0, MAX_ATTEMPTS - used);
+  return n === 1 ? '1 guess left.' : `${n} guesses left.`;
+};
+
 export function Note({ kind, children, testId }: { kind?: 'ok' | 'bad' | 'hint'; children: ReactNode; testId?: string }) {
   return (
     <div className="ens-note ens-fade" data-k={kind} role={kind === 'bad' ? 'alert' : 'status'} data-testid={testId}>
@@ -42,7 +65,7 @@ export function Board({ info, record, view, children, testId }: { info: PuzzleDe
           <h2 className="ens-h">{info.title}</h2>
           <p className="ens-p">{info.brief}</p>
         </div>
-        <Pips record={record} />
+        <ClockFace record={record} />
       </div>
       {view}
       <div className="mt-3 flex flex-col gap-3">{children}</div>

@@ -7,7 +7,8 @@ import { MAX_ATTEMPTS } from '@/engineerle/scoring';
 import { byId } from '@/engineerle/registry';
 import { resolveTheme } from '@/lib/settings';
 import { useSettings } from '@/hooks/useSettings';
-import { Board, Note, type PuzzleProps } from './Board';
+import { Board, Note, type PuzzleProps, guessesLeft } from './Board';
+import { useClock } from './clock';
 
 const INFO = byId('waveform');
 const M = { l: 38, r: 10, t: 10, b: 24 };
@@ -30,6 +31,7 @@ interface Anim {
 }
 
 export function GraphPuzzle({ spec, record, onAttempt }: PuzzleProps<GraphSpec>) {
+  const clock = useClock();
   const { settings, play } = useSettings();
   const theme = resolveTheme(settings.theme);
   const view = spec.view;
@@ -329,6 +331,7 @@ export function GraphPuzzle({ spec, record, onAttempt }: PuzzleProps<GraphSpec>)
       if (Number.isFinite(a) && !(Number.isFinite(b) && Math.abs(a - b) <= tol)) bad.push(x);
     }
     setMsg(null);
+    clock.hold();
     setBusy(true);
     lastOk.current = verdict.ok;
     pending.current = verdict.ok;
@@ -337,9 +340,7 @@ export function GraphPuzzle({ spec, record, onAttempt }: PuzzleProps<GraphSpec>)
     const after = () => {
       if (verdict.ok) setMsg({ k: 'ok', t: 'That is the curve. Every point lines up.' });
       else {
-        const pct = Math.round(verdict.match * 100);
-        const hint = attemptNo === 1 ? spec.hints[0] : attemptNo === 2 ? spec.hints[1] : null;
-        setMsg({ k: 'bad', t: attemptNo >= MAX_ATTEMPTS ? `Out of guesses. It was y = ${spec.answer}.` : `Your curve sits on the target for ${pct}% of the graph.${hint ? ` Hint: ${hint}` : ''}` });
+        setMsg({ k: 'bad', t: attemptNo >= MAX_ATTEMPTS ? `Out of guesses. It was y = ${spec.answer}.` : `That is not the curve. ${guessesLeft(attemptNo)}` });
       }
       finish(verdict.ok);
     };

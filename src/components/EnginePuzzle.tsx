@@ -7,7 +7,8 @@ import { byId } from '@/engineerle/registry';
 import { STEP, TOL, coupleSum, forceSum, isSmooth, unbalance, type CrankSpec } from '@/engineerle/crank';
 import { sfx } from '@/lib/sfx';
 import { useSettings } from '@/hooks/useSettings';
-import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
+import { Board, Note, Unsupported, useStage, type PuzzleProps, guessesLeft } from './Board';
+import { useClock } from './clock';
 import { box, cyl, outline, setStrut, shadowFloor, steel } from './stage';
 
 const INFO = byId('engine');
@@ -134,6 +135,7 @@ function Polygon({ title, weights, angles, tol, testId }: { title: string; weigh
 /* ───────────────────────────── the puzzle ───────────────────────────── */
 
 export function EnginePuzzle({ spec, record, onAttempt }: PuzzleProps<CrankSpec>) {
+  const clock = useClock();
   const { play, settings } = useSettings();
   const n = spec.m.length;
   const [angles, setAngles] = useState<number[]>(() => spec.m.map(() => 0));
@@ -286,11 +288,8 @@ export function EnginePuzzle({ spec, record, onAttempt }: PuzzleProps<CrankSpec>
           if (u.force > TOL) bits.push(`the up-and-down force is ${Math.round(u.force * 100)}% of the worst case`);
           if (u.couple > TOL) bits.push(`the rocking couple is ${Math.round(u.couple * 100)}%`);
           let t = `She shakes: ${bits.join(' and ')}.`;
-          if (attempt === 1) t += ' Both polygons must close. The couple polygon is now unlocked.';
-          else if (attempt === 2) {
-            const j = 1 + Math.floor(((L.spec.m.length - 1) * 0.5));
-            t += ` Hint: in one balanced setting, cylinder ${j + 1} sits at ${L.spec.answer[j]}°.`;
-          } else t = `Out of guesses. One balanced setting is ${L.spec.answer.map((a) => `${a}°`).join(', ')}.`;
+          if (attempt < MAX_ATTEMPTS) t += ` ${guessesLeft(attempt)}`;
+          else t = `Out of guesses. One balanced setting is ${L.spec.answer.map((a) => `${a}°`).join(', ')}.`;
           setMsg({ k: attempt >= MAX_ATTEMPTS ? 'bad' : 'hint', t });
           L.play('wrong');
         }
@@ -430,7 +429,7 @@ export function EnginePuzzle({ spec, record, onAttempt }: PuzzleProps<CrankSpec>
       {!done && (
         <div className="flex items-center justify-between gap-3">
           <p className="ens-label">The engine is only tested when you start it.</p>
-          <button className="ens-btn" onClick={() => api.current?.run()} disabled={busy} data-testid="engine-start">
+          <button className="ens-btn" onClick={() => { clock.hold(); api.current?.run(); }} disabled={busy} data-testid="engine-start">
             {busy ? 'Running…' : 'Start the engine'}
           </button>
         </div>

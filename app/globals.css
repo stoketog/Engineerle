@@ -497,6 +497,10 @@ button { font: inherit; color: inherit; }
 .ens-h { font-family: var(--font-display); font-weight: 600; font-size: 1.2rem; color: var(--en-ink); }
 .ens-p { font-size: 0.88rem; color: var(--en-mute); line-height: 1.45; }
 
+.ens-clock { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; }
+.ens-timer { font-family: var(--font-mono, ui-monospace, monospace); font-size: 1.05rem; font-weight: 700; line-height: 1; color: var(--en-ink); font-variant-numeric: tabular-nums; }
+.ens-timer[data-over="true"] { color: var(--en-bad); }
+.ens-par { font-size: 0.68rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--en-faint); line-height: 1; }
 .ens-pips { display: inline-flex; gap: 0.3rem; align-items: center; }
 .ens-pips i { width: 0.8rem; height: 0.8rem; border: 1.5px solid var(--en-line2); border-radius: 2px; }
 .ens-pips i[data-s="used"] { background: var(--en-faint); border-color: var(--en-faint); }

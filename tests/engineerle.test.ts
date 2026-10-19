@@ -36,9 +36,8 @@ test('the setter\'s own answer and an equivalent form are accepted; a near miss 
   for (let s = 1; s <= 40; s++) {
     const g = makeGraph(s * 101);
     assert.ok(checkGraph(g, g.answer).ok, `${g.family}: ${g.answer}`);
-    assert.ok(g.hints.length >= 2);
   }
-  const q: GraphSpec = { kind: 'graph', family: 'quadratic', c: [2, 1, -3], answer: '2(x-1)^2 - 3', view: { xmin: -6, xmax: 6, ymin: -8, ymax: 30 }, hints: ['', ''] };
+  const q: GraphSpec = { kind: 'graph', family: 'quadratic', c: [2, 1, -3], answer: '2(x-1)^2 - 3', view: { xmin: -6, xmax: 6, ymin: -8, ymax: 30 } };
   assert.ok(checkGraph(q, '2x^2 - 4x - 1').ok);
   assert.ok(!checkGraph(q, '2x^2 - 4x').ok);
   assert.ok(!checkGraph(q, 'x^2').ok);

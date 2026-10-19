@@ -7,7 +7,8 @@ import { byId } from '@/engineerle/registry';
 import { LEVEL_HEEL, MIN_FREEBOARD, MIN_GM, RHO, bargeState, isSolved, solutions, withinLimits, PUMP_STEP, type BargeSpec } from '@/engineerle/barge';
 import { sfx } from '@/lib/sfx';
 import { useSettings } from '@/hooks/useSettings';
-import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
+import { Board, Note, Unsupported, useStage, type PuzzleProps, guessesLeft } from './Board';
+import { useClock } from './clock';
 import { box, outline, shadowFloor, steel } from './stage';
 
 const INFO = byId('barge');
@@ -77,6 +78,7 @@ function Plan({ spec, w }: { spec: BargeSpec; w: number[] }) {
 /* ───────────────────────────── the puzzle ───────────────────────────── */
 
 export function BargePuzzle({ spec, record, onAttempt }: PuzzleProps<BargeSpec>) {
+  const clock = useClock();
   const { play, settings } = useSettings();
   const [w, setW] = useState<number[]>([0, 0, 0, 0]);
   const [phase, setPhase] = useState<Phase>('plan');
@@ -256,8 +258,7 @@ export function BargePuzzle({ spec, record, onAttempt }: PuzzleProps<BargeSpec>)
           let t = `She floats ${heel} and ${trim}.`;
           if (st.gmT < MIN_GM) t = `She is unstable: GM is only ${st.gmT.toFixed(2)} m.`;
           else if (st.freeboard < MIN_FREEBOARD && Math.abs(st.heel) <= LEVEL_HEEL) t = `She sits too low: only ${st.freeboard.toFixed(2)} m of freeboard, and the deck is awash.`;
-          if (attempt === 1) t += ` Her centre of gravity is ${Math.abs(st.yg).toFixed(2)} m ${sideWord(st.yg, 'to starboard', 'to port')} of the centreline and ${Math.abs(st.xg).toFixed(2)} m ${sideWord(st.xg, 'forward of', 'aft of')} amidships.`;
-          else if (attempt === 2) t += ` Hint: you need the total moment about each axis to cancel. About ${Math.round(Math.abs(st.yg) * st.mass / 4 / 5) * 5} t more ballast on the ${sideWord(st.yg, 'port', 'starboard')} side would right the heel.`;
+          if (attempt < MAX_ATTEMPTS) t += ` ${guessesLeft(attempt)}`;
           else {
             const sol = solutions(sp, 10, 1)[0];
             t = `Out of guesses. One level setting: ${sol ? sol.map((v, i) => `${TANK_NAMES[i]} ${v} t`).join(', ') : 'none found'}.`;
@@ -399,6 +400,7 @@ export function BargePuzzle({ spec, record, onAttempt }: PuzzleProps<BargeSpec>)
       setMsg({ k: 'bad', t: `That is over the pump limit (${spec.pumpMax} t in total) or a tank's capacity.` });
       return;
     }
+    clock.hold();
     api.current?.flood(w);
   };
 

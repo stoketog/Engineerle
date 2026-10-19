@@ -6,7 +6,8 @@ import { MAX_ATTEMPTS } from '@/engineerle/scoring';
 import { byId } from '@/engineerle/registry';
 import { BridgeSim, UPGRADE, buildTruss, memberLength, toM2, type BridgeSpec } from '@/engineerle/truss';
 import { useSettings } from '@/hooks/useSettings';
-import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
+import { Board, Note, Unsupported, useStage, type PuzzleProps, guessesLeft } from './Board';
+import { useClock } from './clock';
 import { box, cyl, outline, setStrut, shadowFloor, steel } from './stage';
 
 const INFO = byId('bridge');
@@ -36,6 +37,7 @@ export function memberName(spec: { panels: number }, i: number) {
 const kindOf = (spec: { panels: number }, i: number) => (i < spec.panels ? 'bottom chord' : i < 2 * spec.panels - 1 ? 'top chord' : 'diagonal');
 
 export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec>) {
+  const clock = useClock();
   const { play, settings } = useSettings();
   const truss = useMemo(() => buildTruss(spec.panels), [spec.panels]);
   const lens = useMemo(() => truss.members.map((_, i) => memberLength(truss, i)), [truss]);
@@ -284,7 +286,7 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
           setMsg({ k: 'ok', t: `It holds. At its busiest the bridge was working at ${Math.round(worst * 100)}% of its capacity.` });
           L.play('correct');
         } else {
-          setMsg({ k: L.record.attempts + 1 >= MAX_ATTEMPTS ? 'bad' : 'hint', t: 'The span came down.' });
+          setMsg({ k: L.record.attempts + 1 >= MAX_ATTEMPTS ? 'bad' : 'hint', t: L.record.attempts + 1 >= MAX_ATTEMPTS ? 'The span came down.' : `The span came down. ${guessesLeft(L.record.attempts + 1)}` });
           L.play('wrong');
         }
         L.onAttempt(ok);
@@ -470,7 +472,7 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
               Reinforced {sel.length} of {spec.budget}
               {sel.length ? ` · ${names(sel)}` : ''}
             </p>
-            <button className="ens-btn" onClick={() => api.current?.run(sel)} disabled={busy || sel.length === 0} data-testid="bridge-test">
+            <button className="ens-btn" onClick={() => { clock.hold(); api.current?.run(sel); }} disabled={busy || sel.length === 0} data-testid="bridge-test">
               Test the truck
             </button>
           </div>

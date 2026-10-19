@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getEngineerleDaily } from '@/engineerle/daily';
 import { MAX_DAY_POINTS } from '@/engineerle/scoring';
 import type { GraphSpec } from '@/engineerle/graph';
@@ -8,11 +8,12 @@ import type { LeverSpec } from '@/engineerle/lever';
 import type { BridgeSpec } from '@/engineerle/truss';
 import type { CrankSpec } from '@/engineerle/crank';
 import type { BargeSpec } from '@/engineerle/barge';
-import { dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore } from '@/engineerle/store';
+import { addSeconds, dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore, type PuzzleRecord } from '@/engineerle/store';
 import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/dates';
 import { useSettings } from '@/hooks/useSettings';
 import { OBSCURA_URL } from '@/lib/sites';
 import { withSettings } from '@/lib/settings';
+import { PuzzleClock } from './clock';
 import { IconChart, IconHelp, IconMenu } from './Icons';
 import { Modal } from './Modal';
 import { SettingsModal } from './SettingsModal';
@@ -25,6 +26,18 @@ import { EnginePuzzle } from './EnginePuzzle';
 import { BargePuzzle } from './BargePuzzle';
 
 const SEEN = 'engineerle:v1:help-seen';
+
+/** The one place that knows which component draws which puzzle. */
+function renderPuzzle(id: string, spec: { kind: string }, common: { record: PuzzleRecord; onAttempt: (solved: boolean) => void }) {
+  switch (id) {
+    case 'waveform': return <GraphPuzzle spec={spec as GraphSpec} {...common} />;
+    case 'lever': return <LeverPuzzle spec={spec as LeverSpec} {...common} />;
+    case 'bridge': return <BridgePuzzle spec={spec as BridgeSpec} {...common} />;
+    case 'engine': return <EnginePuzzle spec={spec as CrankSpec} {...common} />;
+    case 'barge': return <BargePuzzle spec={spec as BargeSpec} {...common} />;
+    default: return null;
+  }
+}
 
 function useToday() {
   const [key, setKey] = useState(() => toDateKey(new Date()));
@@ -73,10 +86,22 @@ export default function EngineerleApp() {
     }
   };
 
+  // the open puzzle's exact running time, so a guess is scored on the clock at that moment
+  const live = useRef(0);
+  const saveSeconds = useCallback(
+    (index: number, seconds: number) => setStore((prev) => {
+      const next = addSeconds(prev, dateKey, index, seconds - getDay(prev, dateKey).puzzles[index].seconds);
+      if (next !== prev) saveStore(next);
+      return next;
+    }),
+    [dateKey],
+  );
+
   const attempt = useCallback(
-    (index: number, solved: boolean) => {
+    (index: number, solved: boolean, seconds: number) => {
       setStore((prev) => {
-        const next = recordAttempt(prev, dateKey, index, solved, daily.puzzles[index].def.parSeconds);
+        const timed = addSeconds(prev, dateKey, index, seconds - getDay(prev, dateKey).puzzles[index].seconds);
+        const next = recordAttempt(timed, dateKey, index, solved, daily.puzzles[index].def.parSeconds);
         if (next !== prev) {
           saveStore(next);
           const rec = getDay(next, dateKey).puzzles[index];
@@ -94,16 +119,13 @@ export default function EngineerleApp() {
   const puzzle = (i: number) => {
     const rec = day.puzzles[i];
     const key = `${dateKey}-${i}`;
-    const common = { record: rec, onAttempt: (s: boolean) => attempt(i, s) };
+    const common = { record: rec, onAttempt: (s: boolean) => attempt(i, s, live.current) };
     const { def, spec } = daily.puzzles[i];
-    switch (def.id) {
-      case 'waveform': return <GraphPuzzle key={key} spec={spec as GraphSpec} {...common} />;
-      case 'lever': return <LeverPuzzle key={key} spec={spec as LeverSpec} {...common} />;
-      case 'bridge': return <BridgePuzzle key={key} spec={spec as BridgeSpec} {...common} />;
-      case 'engine': return <EnginePuzzle key={key} spec={spec as CrankSpec} {...common} />;
-      case 'barge': return <BargePuzzle key={key} spec={spec as BargeSpec} {...common} />;
-      default: return null;
-    }
+    return (
+      <PuzzleClock key={key} record={rec} par={def.parSeconds} onSave={(sec) => saveSeconds(i, sec)} live={live}>
+        {renderPuzzle(def.id, spec, common)}
+      </PuzzleClock>
+    );
   };
 
   const goto = (i: number) => {
@@ -305,7 +327,7 @@ function EngineerleHelp({ onClose }: { onClose: () => void }) {
           <li><b className="text-white">Engine.</b> Set each crank throw so the forces and the rocking couples cancel out.</li>
           <li><b className="text-white">Barge.</b> Balance her with ballast so she floats upright and level.</li>
         </ol>
-        <p>You get three guesses on each. A first-guess solve is worth 100 points, the second 65, the third 35. Misses show you what went wrong, and a hint comes with the first two.</p>
+        <p>You get three guesses on each, and a clock runs while you work. A quick first-guess solve is worth 100 points; a second guess is worth 65% of that and a third 35%, and the points shrink gently once you pass the par time shown on each puzzle (never below 40% of the guess value). A miss only shows you what happened, with no hints, and the answer appears when the puzzle is over.</p>
         <button className="btn-primary mt-1" onClick={onClose} data-testid="ens-help-ok">Start</button>
       </div>
     </Modal>

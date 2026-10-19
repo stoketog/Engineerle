@@ -6,7 +6,8 @@ import { BEAM_LEN, G, HOOK, LEVEL_DEG, hookStiffness, inertia, moment, type Leve
 import { MAX_ATTEMPTS } from '@/engineerle/scoring';
 import { byId } from '@/engineerle/registry';
 import { useSettings } from '@/hooks/useSettings';
-import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
+import { Board, Note, Unsupported, useStage, type PuzzleProps, guessesLeft } from './Board';
+import { useClock } from './clock';
 import { box, outline, shadowFloor, steel } from './stage';
 
 const INFO = byId('lever');
@@ -25,6 +26,7 @@ interface Api {
 const massColor = (m: number) => new THREE.Color().setHSL((205 - Math.min(1, m / 65) * 190) / 360, 0.6, 0.5);
 
 export function LeverPuzzle({ spec, record, onAttempt }: PuzzleProps<LeverSpec>) {
+  const clock = useClock();
   const { play, settings } = useSettings();
   const [p, setP] = useState(0);
   const [phase, setPhase] = useState<Phase>('hold');
@@ -148,16 +150,13 @@ export function LeverPuzzle({ spec, record, onAttempt }: PuzzleProps<LeverSpec>)
         const ok = Math.abs(angleDeg) <= LEVEL_DEG;
         const attempt = L.record.attempts + 1;
         const side = angleDeg > 0 ? 'right' : 'left';
-        const dir = angleDeg > 0 ? 'right' : 'left';
         if (ok) {
           setMsg({ k: 'ok', t: `Level. She settles within ${Math.abs(angleDeg).toFixed(1)}° of horizontal.` });
           L.play('correct');
         } else {
           let t = `The ${side} end drops, ${Math.abs(angleDeg).toFixed(0)}° down.`;
-          if (attempt === 1) t += ` Hint: the pivot belongs nearer the heavier side, so slide it ${dir}.`;
-          else if (attempt === 2) t += ` Hint: the balance point is between ${(Math.round((L.spec.answer - 0.8) * 2) / 2).toFixed(1)} and ${(Math.round((L.spec.answer + 0.8) * 2) / 2).toFixed(1)} m.`;
-          else t += ` It balanced at ${L.spec.answer.toFixed(2)} m.`;
-          setMsg({ k: attempt === 1 || attempt === 2 ? 'hint' : 'bad', t });
+          t += attempt >= MAX_ATTEMPTS ? ` It balanced at ${L.spec.answer.toFixed(2)} m.` : ` ${guessesLeft(attempt)}`;
+          setMsg({ k: attempt >= MAX_ATTEMPTS ? 'bad' : 'hint', t });
           L.play('wrong');
         }
         L.onAttempt(ok);
@@ -311,7 +310,7 @@ export function LeverPuzzle({ spec, record, onAttempt }: PuzzleProps<LeverSpec>)
           </label>
           <div className="flex items-center justify-between gap-3">
             <p className="ens-p">The plank is uniform. Each weight hangs {HOOK} m below it.</p>
-            <button className="ens-btn" onClick={() => api.current?.release()} disabled={busy} data-testid="lever-release">
+            <button className="ens-btn" onClick={() => { clock.hold(); api.current?.release(); }} disabled={busy} data-testid="lever-release">
               Release
             </button>
           </div>

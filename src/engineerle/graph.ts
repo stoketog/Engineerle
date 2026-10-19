@@ -13,8 +13,6 @@ export interface GraphSpec {
   /** The answer as the setter would write it (shown on a miss, never to be matched literally). */
   answer: string;
   view: { xmin: number; xmax: number; ymin: number; ymax: number };
-  /** A key point and a family hint, revealed after the first and second misses. */
-  hints: string[];
 }
 
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(Number(n.toFixed(3))));
@@ -39,7 +37,6 @@ export function makeGraph(seed: number): GraphSpec {
   const family = pick<GraphFamily>(['quadratic', 'cubic', 'sine', 'exponential', 'rational', 'abs-shift', 'quadratic', 'sine', 'exponential']);
   let c: number[] = [];
   let answer = '';
-  let hints: string[] = [];
   const view = { xmin: -8, xmax: 8, ymin: -8, ymax: 8 };
   switch (family) {
     case 'quadratic': {
@@ -47,7 +44,6 @@ export function makeGraph(seed: number): GraphSpec {
       const h = int(-3, 3), k = int(-4, 4);
       c = [a, h, k];
       answer = `${a === 1 ? '' : a === -1 ? '-' : fmt(a)}${h === 0 ? 'x' : `(x${h < 0 ? ` + ${fmt(-h)}` : ` - ${fmt(h)}`})`}^2${k === 0 ? '' : sgn(k)}`;
-      hints = [`It is a parabola. Find its turning point first: it sits at (${h}, ${k}).`, `The turning point is (${h}, ${k}); the curve opens ${a > 0 ? 'upwards' : 'downwards'}. How steeply does it widen?`];
       view.ymin = Math.min(-6, k - 4); view.ymax = Math.max(6, k + 6);
       if (a < 0) { view.ymin = Math.min(-8, k - 6); view.ymax = Math.max(4, k + 3); }
       break;
@@ -57,7 +53,6 @@ export function makeGraph(seed: number): GraphSpec {
       const a = pick([0.25, 0.5, -0.25, -0.5, 1, -1]);
       c = [a, ...roots];
       answer = `${fmt(a)}(x${roots[0] < 0 ? ` + ${fmt(-roots[0])}` : roots[0] > 0 ? ` - ${fmt(roots[0])}` : ''})(x${roots[1] < 0 ? ` + ${fmt(-roots[1])}` : roots[1] > 0 ? ` - ${fmt(roots[1])}` : ''})(x${roots[2] < 0 ? ` + ${fmt(-roots[2])}` : ` - ${fmt(roots[2])}`})`;
-      hints = [`A cubic with three x-intercepts. Read them off: x = ${roots.join(', ')}.`, `The roots are ${roots.join(', ')}. One number is left: the scale in front.`];
       view.ymin = -8; view.ymax = 8;
       break;
     }
@@ -67,7 +62,6 @@ export function makeGraph(seed: number): GraphSpec {
       const D = pick([0, 0, 1, -1, 2]);
       c = [A, B, D];
       answer = `${fmt(A)}sin(${B === 1 ? '' : fmt(B)}x)${D === 0 ? '' : sgn(D)}`;
-      hints = [`It is a wave. The midline is y = ${D} and it swings ${A} above and below it.`, `Midline y = ${D}, amplitude ${A}. Count how far along x one full cycle takes: the period is ${fmt(Number((2 * Math.PI / B).toFixed(2)))}.`];
       view.xmin = -10; view.xmax = 10; view.ymin = -7; view.ymax = 7;
       break;
     }
@@ -77,7 +71,6 @@ export function makeGraph(seed: number): GraphSpec {
       const d = pick([0, 0, -1, 1, 2]);
       c = [a, b, d];
       answer = `${a === 1 ? '' : a === -1 ? '-' : fmt(a) + '*'}${b}^x${d === 0 ? '' : sgn(d)}`;
-      hints = [`It never touches y = ${d}: an exponential. It passes through (0, ${fmt(a + d)}).`, `At x = 0 it is ${fmt(a + d)}, and each step in x multiplies the distance from y = ${d} by ${b}.`];
       view.xmin = -6; view.xmax = 6; view.ymin = -4; view.ymax = 12;
       break;
     }
@@ -86,7 +79,6 @@ export function makeGraph(seed: number): GraphSpec {
       const h = int(-3, 3), k = int(-3, 3);
       c = [a, h, k];
       answer = `${fmt(a)}/(x${h === 0 ? '' : h < 0 ? ` + ${fmt(-h)}` : ` - ${fmt(h)}`})${k === 0 ? '' : sgn(k)}`;
-      hints = [`Two lines it never crosses: x = ${h} and y = ${k}. That is a reciprocal curve.`, `Asymptotes x = ${h}, y = ${k}. The top number sets how far the branches sit from them.`];
       view.xmin = -8; view.xmax = 8; view.ymin = -8; view.ymax = 8;
       break;
     }
@@ -95,12 +87,11 @@ export function makeGraph(seed: number): GraphSpec {
       const h = int(-4, 4), k = int(-4, 4);
       c = [a, h, k];
       answer = `${fmt(a)}*abs(x${h === 0 ? '' : h < 0 ? ` + ${fmt(-h)}` : ` - ${fmt(h)}`})${k === 0 ? '' : sgn(k)}`;
-      hints = [`A sharp V (or ^): an absolute value. The corner is at (${h}, ${k}).`, `Corner at (${h}, ${k}). Read the slope of one arm: rise over run.`];
       view.ymin = -8; view.ymax = 8;
       break;
     }
   }
-  return { kind: 'graph', family, c, answer, view, hints };
+  return { kind: 'graph', family, c, answer, view };
 }
 
 export interface GraphVerdict {
