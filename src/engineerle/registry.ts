@@ -1,0 +1,47 @@
+import { makeGraph } from './graph';
+import { makeLever } from './lever';
+import { makeBridge } from './truss';
+import { makeEngine } from './crank';
+import { makeBarge } from './barge';
+
+export type Discipline = 'structures' | 'mechanical' | 'electrical' | 'electronics' | 'aerospace';
+
+export const DISCIPLINE_LABEL: Record<Discipline, string> = {
+  structures: 'Structures and fluids',
+  mechanical: 'Mechanical',
+  electrical: 'Electrical',
+  electronics: 'Electronics',
+  aerospace: 'Aerospace',
+};
+
+/** One puzzle in the pool. The app, store, scoring and results know nothing else about it. */
+export interface PuzzleDef {
+  id: string;
+  discipline: Discipline;
+  /** 1 approachable … 3 demanding; a day is shown in this order. */
+  difficulty: 1 | 2 | 3;
+  /** Short label for the tab. */
+  tab: string;
+  title: string;
+  /** One line shown above the puzzle. */
+  brief: string;
+  /** Time a confident player needs; the time score starts to fall after it. */
+  parSeconds: number;
+  /** Builds a solvable spec from a seed. */
+  make(seed: number): { kind: string };
+}
+
+export const POOL: PuzzleDef[] = [
+  { id: 'waveform', discipline: 'electronics', difficulty: 1, tab: 'Curve', title: 'Name that curve', brief: 'Read the graph and write the equation that draws it.', parSeconds: 90, make: makeGraph },
+  { id: 'lever', discipline: 'mechanical', difficulty: 1, tab: 'Lever', title: 'Find the pivot', brief: 'Slide the pivot under the beam until the loads hang level.', parSeconds: 90, make: makeLever },
+  { id: 'barge', discipline: 'structures', difficulty: 2, tab: 'Barge', title: 'Level the barge', brief: 'Fill the ballast tanks until she floats upright and level.', parSeconds: 150, make: makeBarge },
+  { id: 'bridge', discipline: 'structures', difficulty: 2, tab: 'Bridge', title: 'The failing bridge', brief: 'Pick the members that buckle or snap, then test the truck.', parSeconds: 150, make: makeBridge },
+  // replaced by the four-stroke crankshaft puzzle in a later task
+  { id: 'engine', discipline: 'mechanical', difficulty: 3, tab: 'Engine', title: 'Smooth running', brief: 'Set the crank angles so the engine stops shaking.', parSeconds: 150, make: makeEngine },
+];
+
+export function byId(id: string): PuzzleDef {
+  const d = POOL.find((p) => p.id === id);
+  if (!d) throw new Error(`unknown puzzle ${id}`);
+  return d;
+}

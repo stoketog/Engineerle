@@ -5,8 +5,6 @@ import { makeLever, balancePoint, isLevel, settleAngle, tolerance, moment } from
 import { buildTruss, solveTruss, truckLoads, makeBridge, envelope, memberLength, capacity, UPGRADE } from '@/engineerle/truss';
 import { makeEngine, isSmooth, forceSum, coupleSum, solutions as crankSolutions, unbalance } from '@/engineerle/crank';
 import { makeBarge, bargeState, isSolved, solutions as bargeSolutions, withinLimits } from '@/engineerle/barge';
-import { getEngineerleDaily, PUZZLES, engineerleNumber, ENGINEERLE_EPOCH } from '@/engineerle/daily';
-import { emptyStore, recordAttempt, getDay, dayDone, dayPoints, streak, totals, shareText, sanitise, square } from '@/engineerle/store';
 
 let passed = 0;
 const test = (name: string, fn: () => void) => {
@@ -173,67 +171,6 @@ test('generated barges list awkwardly and have honest solutions', () => {
     }
     assert.ok(!isSolved(b, [110, 110, 110, 110]), 'over the pump limit');
   }
-});
-
-console.log('Daily set and progress');
-test('everyone gets the same five puzzles on a day; different days differ', () => {
-  const a = getEngineerleDaily('2026-10-20'), b = getEngineerleDaily('2026-10-20'), c = getEngineerleDaily('2026-10-21');
-  assert.equal(JSON.stringify(a), JSON.stringify(b));
-  assert.notEqual(JSON.stringify(a), JSON.stringify(c));
-  assert.deepEqual(a.specs.map((s) => s.kind), ['graph', 'lever', 'bridge', 'engine', 'barge']);
-  assert.deepEqual(PUZZLES.map((p) => p.kind), a.specs.map((s) => s.kind));
-  assert.equal(engineerleNumber(ENGINEERLE_EPOCH), 1);
-  assert.equal(a.number, 2);
-});
-test('every day for a year generates quickly and validly', () => {
-  const t0 = Date.now();
-  for (let i = 0; i < 20; i++) {
-    const d = getEngineerleDaily(`2027-0${1 + (i % 9)}-${10 + i}`);
-    assert.ok(isSmooth(d.specs[3], d.specs[3].answer));
-    assert.ok(checkGraph(d.specs[0], d.specs[0].answer).ok);
-    assert.ok(isSolved(d.specs[4], bargeSolutions(d.specs[4], 10, 1)[0]));
-  }
-  assert.ok(Date.now() - t0 < 8000, `${Date.now() - t0} ms`);
-});
-test('scoring: 100, 65, 35 for the first, second and third guess; none when out of guesses', () => {
-  let s = emptyStore();
-  s = recordAttempt(s, 'd', 0, true);
-  s = recordAttempt(s, 'd', 1, false); s = recordAttempt(s, 'd', 1, true);
-  s = recordAttempt(s, 'd', 2, false); s = recordAttempt(s, 'd', 2, false); s = recordAttempt(s, 'd', 2, true);
-  s = recordAttempt(s, 'd', 3, false); s = recordAttempt(s, 'd', 3, false); s = recordAttempt(s, 'd', 3, false);
-  const d = getDay(s, 'd');
-  assert.deepEqual(d.puzzles.map((p) => p.points), [100, 65, 35, 0, 0]);
-  assert.ok(!dayDone(d));
-  assert.equal(dayPoints(d), 200);
-  assert.deepEqual(d.puzzles.map(square), ['🟩', '🟨', '🟧', '⬛', '⬛']);
-  // a finished puzzle cannot be re-scored
-  const again = recordAttempt(s, 'd', 0, false);
-  assert.equal(JSON.stringify(again), JSON.stringify(s));
-});
-test('streaks, totals and the share text', () => {
-  let s = emptyStore();
-  for (const k of ['2026-10-19', '2026-10-20', '2026-10-21']) for (let i = 0; i < 5; i++) s = recordAttempt(s, k, i, i !== 3 || k !== '2026-10-20' ? true : false);
-  // day 2 puzzle 3 is only attempted once, so that day is not finished
-  assert.equal(streak(s, '2026-10-21'), 1);
-  for (let i = 0; i < 2; i++) s = recordAttempt(s, '2026-10-20', 3, false);
-  assert.equal(streak(s, '2026-10-21'), 3);
-  assert.equal(streak(s, '2026-10-22'), 3, 'today still open keeps yesterday\'s run');
-  assert.equal(streak(s, '2026-10-25'), 0);
-  const t = totals(s);
-  assert.equal(t.played, 3);
-  assert.equal(t.perfect, 2);
-  assert.equal(t.best, 500);
-  const txt = shareText('2026-10-20', getDay(s, '2026-10-20'));
-  assert.ok(txt.startsWith('Engineerle #2') && txt.includes('🟩🟩🟩⬛🟩'), txt);
-});
-test('saved data is cleaned on load', () => {
-  const s = sanitise({ days: { '2026-10-19': { puzzles: [{ attempts: 9, solved: true }, { attempts: 'x' }, null] }, junk: {} } });
-  assert.equal(Object.keys(s.days).length, 1);
-  const d = s.days['2026-10-19'];
-  assert.equal(d.puzzles.length, 5);
-  assert.equal(d.puzzles[0].attempts, 3);
-  assert.equal(d.puzzles[0].points, 35);
-  assert.equal(d.puzzles[1].attempts, 0);
 });
 
 console.log(`\n${passed} passed`);

@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { checkGraph, graphFn, type GraphSpec } from '@/engineerle/graph';
 import { parseExpr, type Fn } from '@/engineerle/expr';
-import { PUZZLES, MAX_ATTEMPTS } from '@/engineerle/daily';
+import { MAX_ATTEMPTS } from '@/engineerle/scoring';
+import { byId } from '@/engineerle/registry';
 import { resolveTheme } from '@/lib/settings';
 import { useSettings } from '@/hooks/useSettings';
 import { Board, Note, type PuzzleProps } from './Board';
 
-const INFO = PUZZLES[0];
+const INFO = byId('waveform');
 const M = { l: 38, r: 10, t: 10, b: 24 };
 const HAND = '"Bradley Hand", "Segoe Print", "Segoe Script", "Comic Sans MS", "Marker Felt", cursive';
 const KEYS: Array<[string, string]> = [['x', 'x'], ['^', '^'], ['( )', '()'], ['π', 'π'], ['√', '√('], ['sin', 'sin('], ['cos', 'cos('], ['e^', 'e^'], ['ln', 'ln('], ['|x|', '|']];

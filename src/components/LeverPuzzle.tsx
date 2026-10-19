@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { BEAM_LEN, G, HOOK, LEVEL_DEG, hookStiffness, inertia, moment, type LeverSpec } from '@/engineerle/lever';
-import { MAX_ATTEMPTS, PUZZLES } from '@/engineerle/daily';
+import { MAX_ATTEMPTS } from '@/engineerle/scoring';
+import { byId } from '@/engineerle/registry';
 import { useSettings } from '@/hooks/useSettings';
 import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
 import { box, outline, shadowFloor, steel } from './stage';
 
-const INFO = PUZZLES[1];
+const INFO = byId('lever');
 const PIVOT_Y = 5.3;
 const STOP = (30 * Math.PI) / 180;
 const TIME_SCALE = 3; // the swing runs faster than real life so a try takes seconds, not half a minute

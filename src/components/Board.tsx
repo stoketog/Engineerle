@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { MAX_ATTEMPTS, type PuzzleInfo } from '@/engineerle/daily';
+import { MAX_ATTEMPTS } from '@/engineerle/scoring';
+import type { PuzzleDef } from '@/engineerle/registry';
 import type { PuzzleRecord } from '@/engineerle/store';
 import { resolveTheme } from '@/lib/settings';
 import { useSettings } from '@/hooks/useSettings';
@@ -33,7 +34,7 @@ export function Note({ kind, children, testId }: { kind?: 'ok' | 'bad' | 'hint';
 }
 
 /** The frame every puzzle sits in: title, the view, then the controls under it. */
-export function Board({ info, record, view, children, testId }: { info: PuzzleInfo; record: PuzzleRecord; view: ReactNode; children: ReactNode; testId: string }) {
+export function Board({ info, record, view, children, testId }: { info: PuzzleDef; record: PuzzleRecord; view: ReactNode; children: ReactNode; testId: string }) {
   return (
     <section className="ens-card ens-fade p-3 sm:p-4" data-testid={testId} aria-label={info.title}>
       <div className="mb-3 flex items-start justify-between gap-3">

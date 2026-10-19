@@ -1,7 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MAX_DAY_POINTS, PUZZLES, getEngineerleDaily } from '@/engineerle/daily';
+import { getEngineerleDaily } from '@/engineerle/daily';
+import { MAX_DAY_POINTS } from '@/engineerle/scoring';
+import type { GraphSpec } from '@/engineerle/graph';
+import type { LeverSpec } from '@/engineerle/lever';
+import type { BridgeSpec } from '@/engineerle/truss';
+import type { CrankSpec } from '@/engineerle/crank';
+import type { BargeSpec } from '@/engineerle/barge';
 import { dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore } from '@/engineerle/store';
 import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/dates';
 import { useSettings } from '@/hooks/useSettings';
@@ -70,7 +76,7 @@ export default function EngineerleApp() {
   const attempt = useCallback(
     (index: number, solved: boolean) => {
       setStore((prev) => {
-        const next = recordAttempt(prev, dateKey, index, solved);
+        const next = recordAttempt(prev, dateKey, index, solved, daily.puzzles[index].def.parSeconds);
         if (next !== prev) {
           saveStore(next);
           const rec = getDay(next, dateKey).puzzles[index];
@@ -82,19 +88,21 @@ export default function EngineerleApp() {
         return next;
       });
     },
-    [dateKey, play],
+    [dateKey, play, daily],
   );
 
   const puzzle = (i: number) => {
     const rec = day.puzzles[i];
     const key = `${dateKey}-${i}`;
     const common = { record: rec, onAttempt: (s: boolean) => attempt(i, s) };
-    switch (daily.specs[i].kind) {
-      case 'graph': return <GraphPuzzle key={key} spec={daily.specs[0]} {...common} />;
-      case 'lever': return <LeverPuzzle key={key} spec={daily.specs[1]} {...common} />;
-      case 'bridge': return <BridgePuzzle key={key} spec={daily.specs[2]} {...common} />;
-      case 'engine': return <EnginePuzzle key={key} spec={daily.specs[3]} {...common} />;
-      case 'barge': return <BargePuzzle key={key} spec={daily.specs[4]} {...common} />;
+    const { def, spec } = daily.puzzles[i];
+    switch (def.id) {
+      case 'waveform': return <GraphPuzzle key={key} spec={spec as GraphSpec} {...common} />;
+      case 'lever': return <LeverPuzzle key={key} spec={spec as LeverSpec} {...common} />;
+      case 'bridge': return <BridgePuzzle key={key} spec={spec as BridgeSpec} {...common} />;
+      case 'engine': return <EnginePuzzle key={key} spec={spec as CrankSpec} {...common} />;
+      case 'barge': return <BargePuzzle key={key} spec={spec as BargeSpec} {...common} />;
+      default: return null;
     }
   };
 
@@ -131,11 +139,11 @@ export default function EngineerleApp() {
         </p>
 
         <nav className="ens-tabs mb-3" aria-label="Today's five puzzles">
-          {PUZZLES.map((p, i) => {
+          {daily.puzzles.map(({ def: p }, i) => {
             const r = day.puzzles[i];
             return (
               <button
-                key={p.kind}
+                key={p.id}
                 className="ens-tab"
                 data-on={tab === i}
                 data-state={r.solved ? 'solved' : r.done ? 'failed' : 'open'}
@@ -182,7 +190,7 @@ export default function EngineerleApp() {
             )}
           </>
         ) : (
-          <Summary dateKey={dateKey} number={daily.number} store={store} onGo={goto} />
+          <Summary dateKey={dateKey} number={daily.number} titles={daily.puzzles.map((p) => p.def.title)} store={store} onGo={goto} />
         )}
       </div>
 
@@ -203,7 +211,7 @@ export default function EngineerleApp() {
 
 /* ───────────────────────────── results ───────────────────────────── */
 
-function Summary({ dateKey, number, store, onGo }: { dateKey: string; number: number; store: EngineerleStore; onGo: (i: number) => void }) {
+function Summary({ dateKey, number, titles, store, onGo }: { dateKey: string; number: number; titles: string[]; store: EngineerleStore; onGo: (i: number) => void }) {
   const { settings } = useSettings();
   const day = getDay(store, dateKey);
   const finished = dayDone(day);
@@ -251,14 +259,13 @@ function Summary({ dateKey, number, store, onGo }: { dateKey: string; number: nu
         </div>
       </div>
       <ul className="m-0 flex list-none flex-col p-0" style={{ borderTop: '1px solid var(--en-line)' }}>
-        {PUZZLES.map((p, i) => {
-          const r = day.puzzles[i];
+        {day.puzzles.map((r, i) => {
           return (
-            <li key={p.kind} style={{ borderBottom: '1px solid var(--en-line)' }}>
+            <li key={r.id} style={{ borderBottom: '1px solid var(--en-line)' }}>
               <button className="flex w-full items-center gap-3 py-2.5 text-left" style={{ background: 'transparent', border: 0, color: 'var(--en-ink)', cursor: 'pointer' }} onClick={() => onGo(i)}>
                 <span className="w-6 text-lg">{r.done || r.attempts ? square(r) : '⬜'}</span>
                 <span className="min-w-0 flex-1">
-                  <b className="block text-sm">{p.title}</b>
+                  <b className="block text-sm">{titles[i]}</b>
                   <span className="ens-label">{r.solved ? `Solved on guess ${r.attempts}` : r.done ? 'Not solved' : r.attempts ? `${r.attempts} guesses used` : 'Not started'}</span>
                 </span>
                 <b className="font-mono text-sm">{r.points}</b>
