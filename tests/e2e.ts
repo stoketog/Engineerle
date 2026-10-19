@@ -11,7 +11,7 @@ import { solutions as bargeSolutions, type BargeSpec } from '@/engineerle/barge'
 import type { GraphSpec } from '@/engineerle/graph';
 import type { LeverSpec } from '@/engineerle/lever';
 import type { BridgeSpec } from '@/engineerle/truss';
-import type { CrankSpec } from '@/engineerle/crank';
+import { bestResiduals, type CrankshaftSpec } from '@/engineerle/crankshaft';
 
 const PROD = 'http://localhost:4182/';
 const servers: ChildProcess[] = [];
@@ -29,7 +29,7 @@ const text = async (p: Page, id: string) => ((await q(p, id).textContent()) ?? '
 const DAY = '2026-11-05';
 const en = getEngineerleDaily(DAY);
 const T = (id: string) => en.puzzles.findIndex((x) => x.def.id === id);
-const gSpec = en.puzzles[T('waveform')].spec as GraphSpec, lSpec = en.puzzles[T('lever')].spec as LeverSpec, bSpec = en.puzzles[T('bridge')].spec as BridgeSpec, eSpec = en.puzzles[T('engine')].spec as CrankSpec, aSpec = en.puzzles[T('barge')].spec as BargeSpec;
+const gSpec = en.puzzles[T('waveform')].spec as GraphSpec, lSpec = en.puzzles[T('lever')].spec as LeverSpec, bSpec = en.puzzles[T('bridge')].spec as BridgeSpec, eSpec = en.puzzles[T('crankshaft')].spec as CrankshaftSpec, aSpec = en.puzzles[T('barge')].spec as BargeSpec;
 const tab = (id: string) => `ens-tab-${T(id)}`;
 const leverAnswer = Math.round(lSpec.answer * 20) / 20;
 const wrongPivot = Math.abs(leverAnswer - -3.5) > 1.5 ? -3.5 : 3.5;
@@ -55,19 +55,16 @@ async function openEn(b: Browser, opts: { mobile?: boolean; settings?: Record<st
   return { ctx, page, errors };
 }
 const pipsUsed = async (p: Page) => /^(\d) of 3/.exec((await q(p, 'pips').getAttribute('aria-label')) ?? '')?.[1];
-async function setDials(p: Page, angles: number[]) {
-  for (let i = 1; i < angles.length; i++) {
-    await q(p, `dial-${i}`).locator('svg').focus();
-    for (let k = 0; k < angles[i] / 30; k++) await p.keyboard.press('ArrowRight');
-  }
-}
+async function tapOrder(p: Page, order: number[]) { for (const c of order) await q(p, `crank-cyl-${c}`).click(); }
+const goodOrder = bestResiduals(eSpec).orders[0];
+const poorOrder = Array.from({ length: eSpec.n }, (_, i) => i + 1);
 async function solveLever(p: Page) { await q(p, 'lever-slider').fill(String(leverAnswer)); await q(p, 'lever-release').click(); await q(p, 'lever-final').waitFor(); }
 async function solveBridge(p: Page) { for (const i of bSpec.weak) await q(p, `bridge-m-${i}`).click(); await q(p, 'bridge-test').click(); await q(p, 'bridge-final').waitFor(); }
-async function solveEngine(p: Page) { await setDials(p, eSpec.answer); await q(p, 'engine-start').click(); await q(p, 'engine-final').waitFor(); }
+async function solveCrank(p: Page) { await tapOrder(p, goodOrder); await q(p, 'crank-run').click(); await q(p, 'crank-final').waitFor(); }
 async function solveWaveform(p: Page) { await q(p, 'graph-input').fill(gSpec.answer); await q(p, 'graph-submit').click(); await q(p, 'graph-final').waitFor(); }
 async function solveBarge(p: Page) { for (let i = 0; i < 4; i++) await q(p, `barge-tank-${i}`).fill(String(bargeAnswer[i])); await q(p, 'barge-flood').click(); await q(p, 'barge-final').waitFor(); }
 
-const solvers: Record<string, (p: Page) => Promise<void>> = { waveform: solveWaveform, lever: solveLever, bridge: solveBridge, engine: solveEngine, barge: solveBarge };
+const solvers: Record<string, (p: Page) => Promise<void>> = { waveform: solveWaveform, lever: solveLever, bridge: solveBridge, crankshaft: solveCrank, barge: solveBarge };
 
 async function main() {
   serve('dist', 4182);
@@ -120,13 +117,18 @@ async function main() {
     for (let i = 0; i <= bSpec.budget; i++) await q(p, `bridge-m-${i}`).click();
     ok((await text(p, 'bridge-count')).startsWith(`Reinforced ${bSpec.budget} of ${bSpec.budget}`), 'capped'); await ctx.close();
   });
-  await t('engine: all cranks in line shakes (and unlocks the couple polygon); the balanced setting runs smooth', async () => {
-    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('engine')).click();
-    eq(await q(p, 'poly-couple-locked').count(), 1, 'locked at first');
-    await q(p, 'engine-start').click(); await q(p, 'engine-msg').waitFor(); ok((await text(p, 'engine-msg')).includes('shakes'), 'shakes');
-    eq(await q(p, 'poly-couple').count(), 1, 'unlocked'); eq(await pipsUsed(p), '1');
-    await p.waitForFunction(() => !(document.querySelector('[data-testid=engine-start]') as HTMLButtonElement | null)?.disabled, null, { timeout: 30_000 });
-    await solveEngine(p); ok((await text(p, 'engine-final')).includes('Smooth'), 'smooth'); eq(await q(p, 'poly-force').getAttribute('data-closed'), 'true', 'force polygon closed');
+  await t('crankshaft: the engine cannot be started until every cylinder is in the order, a poor order shakes and costs a guess, a best order runs smooth', async () => {
+    const { ctx, page: p, errors } = await openEn(b); await q(p, tab('crankshaft')).click();
+    eq(await q(p, 'crank-run').isDisabled(), true, 'cannot run with no order');
+    await q(p, 'crank-cyl-1').click(); eq(await q(p, 'crank-run').isDisabled(), true, 'cannot run with a partial order'); eq(await pipsUsed(p), '0', 'no guess used');
+    await q(p, 'crank-cyl-1').click(); ok((await text(p, 'crank-seq')).includes('none yet'), 'tapping a chosen cylinder takes it back out');
+    await q(p, 'crank-reset').isDisabled().then((d) => eq(d, true, 'nothing to clear'));
+    await tapOrder(p, poorOrder); eq(await q(p, 'crank-run').isDisabled(), false, 'ready');
+    await q(p, 'crank-run').click(); await q(p, 'crank-msg').waitFor({ timeout: 30_000 });
+    ok((await text(p, 'crank-msg')).includes('mounts'), 'shakes'); eq(await pipsUsed(p), '1');
+    await p.waitForFunction(() => !(document.querySelector('[data-testid=crank-run]') as HTMLButtonElement | null)?.disabled || !document.querySelector('[data-testid=crank-run]'), null, { timeout: 30_000 });
+    await q(p, 'crank-reset').click();
+    await solveCrank(p); ok((await text(p, 'crank-final')).includes('Smooth'), 'smooth'); eq(await q(p, tab('crankshaft')).getAttribute('data-state'), 'solved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('barge: an unballasted barge lists; the right ballast floats her level', async () => {
@@ -161,7 +163,7 @@ async function main() {
     await q(p, tab('lever')).click(); await q(p, 'lever-slider').fill(String(wrongPivot)); await q(p, 'lever-release').click(); await q(p, 'lever-msg').waitFor(); ok(!(await body()).includes('hint'), 'lever');
     ok(!/slide it|nearer the heavier/i.test(await body()), 'lever names no direction');
     await q(p, tab('bridge')).click(); await q(p, 'bridge-test').waitFor(); ok(!(await body()).includes('hint'), 'bridge');
-    await q(p, tab('engine')).click(); await q(p, 'engine-start').click(); await q(p, 'engine-msg').waitFor(); ok(!(await body()).includes('hint'), 'engine');
+    await q(p, tab('crankshaft')).click(); await tapOrder(p, poorOrder); await q(p, 'crank-run').click(); await q(p, 'crank-msg').waitFor({ timeout: 30_000 }); ok(!(await body()).includes('hint'), 'crankshaft');
     await q(p, tab('barge')).click(); await q(p, 'barge-flood').click(); await q(p, 'barge-msg').waitFor({ timeout: 30_000 }); ok(!(await body()).includes('hint'), 'barge');
     ok(!/centre of gravity is|more ballast on/i.test(await body()), 'barge names no change');
     await ctx.close();
@@ -195,8 +197,8 @@ async function main() {
   await t('Engineerle works on a phone-sized screen', async () => {
     const { ctx, page: p } = await openEn(b, { mobile: true });
     const w = await p.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]); ok(w[0] <= w[1] + 1, `no sideways scroll ${w}`);
-    await q(p, tab('engine')).click(); await q(p, 'engine-start').waitFor();
-    const w2 = await p.evaluate(() => [document.querySelector('.ens')!.scrollWidth, window.innerWidth]); ok(w2[0] <= w2[1] + 1, `no sideways scroll on the engine ${w2}`); await ctx.close();
+    await q(p, tab('crankshaft')).click(); await q(p, 'crank-run').waitFor();
+    const w2 = await p.evaluate(() => [document.querySelector('.ens')!.scrollWidth, window.innerWidth]); ok(w2[0] <= w2[1] + 1, `no sideways scroll on the crankshaft ${w2}`); await ctx.close();
   });
 
   console.log('\nSidebar, settings and the link to Obscura');

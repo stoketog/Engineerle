@@ -3,7 +3,6 @@ import { parseExpr } from '@/engineerle/expr';
 import { makeGraph, checkGraph, graphFn, type GraphSpec } from '@/engineerle/graph';
 import { makeLever, balancePoint, isLevel, settleAngle, tolerance, moment } from '@/engineerle/lever';
 import { buildTruss, solveTruss, truckLoads, makeBridge, envelope, memberLength, capacity, UPGRADE } from '@/engineerle/truss';
-import { makeEngine, isSmooth, forceSum, coupleSum, solutions as crankSolutions, unbalance } from '@/engineerle/crank';
 import { makeBarge, bargeState, isSolved, solutions as bargeSolutions, withinLimits } from '@/engineerle/barge';
 
 let passed = 0;
@@ -121,29 +120,6 @@ test('generated bridges fail exactly at the weak members and are fixed by upgrad
   }
 });
 /* the collapse is now part of BridgeSim and is tested in tests/truss.test.ts */
-
-console.log('Puzzle 4: the engine');
-test('perfect balance needs both the force sum and the couple to vanish', () => {
-  for (let s = 1; s <= 40; s++) {
-    const e = makeEngine(s * 211);
-    assert.equal(e.answer[0], 0);
-    assert.ok(isSmooth(e, e.answer), 'the stored answer is smooth');
-    const f = forceSum(e, e.answer), c = coupleSum(e, e.answer);
-    assert.ok(Math.hypot(f.x, f.y) < 1e-6 * 10 + 0.06 * e.m.reduce((a, b) => a + b, 0));
-    assert.ok(Math.hypot(c.x, c.y) < 0.06 * e.m.reduce((a, b, i) => a + b * Math.abs(e.z[i]), 0) + 1e-6);
-    assert.ok(!isSmooth(e, e.m.map(() => 0)), 'all cranks in line is a shaker');
-    assert.ok(crankSolutions(e, 40).length >= 1);
-  }
-});
-test('a known engine: the flat-plane four balances only one way', () => {
-  const e = { m: [1, 1, 1, 1], z: [-1.35, -0.45, 0.45, 1.35] };
-  assert.ok(isSmooth(e, [0, 180, 180, 0]));
-  assert.ok(!isSmooth(e, [0, 180, 0, 180]), 'force balances but the couple does not');
-  assert.ok(!isSmooth(e, [0, 0, 180, 180]));
-  near(unbalance(e, [0, 180, 0, 180]).couple, 0.5, 1e-9, 'couple');
-  near(unbalance(e, [0, 0, 180, 180]).couple, 1, 1e-9, 'worst couple');
-  assert.ok(unbalance(e, [0, 180, 0, 180]).force < 1e-9, 'force is balanced even when the couple is not');
-});
 
 console.log('Puzzle 5: the barge');
 test('hydrostatics: draft, stability and heel agree with the textbook', () => {

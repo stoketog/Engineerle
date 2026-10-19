@@ -1,7 +1,7 @@
 import { makeGraph } from './graph';
 import { makeLever } from './lever';
 import { makeBridge } from './truss';
-import { makeEngine } from './crank';
+import { makeCrankshaft } from './crankshaft';
 import { makeBarge } from './barge';
 
 export type Discipline = 'structures' | 'mechanical' | 'electrical' | 'electronics' | 'aerospace';
@@ -36,8 +36,7 @@ export const POOL: PuzzleDef[] = [
   { id: 'lever', discipline: 'mechanical', difficulty: 1, tab: 'Lever', title: 'Find the pivot', brief: 'Slide the pivot under the beam until the loads hang level.', parSeconds: 90, make: makeLever },
   { id: 'barge', discipline: 'structures', difficulty: 2, tab: 'Barge', title: 'Level the barge', brief: 'Fill the ballast tanks until she floats upright and level.', parSeconds: 150, make: makeBarge },
   { id: 'bridge', discipline: 'structures', difficulty: 2, tab: 'Bridge', title: 'The failing bridge', brief: 'Pick the members that buckle or snap, then test the truck.', parSeconds: 150, make: makeBridge },
-  // replaced by the four-stroke crankshaft puzzle in a later task
-  { id: 'engine', discipline: 'mechanical', difficulty: 3, tab: 'Engine', title: 'Smooth running', brief: 'Set the crank angles so the engine stops shaking.', parSeconds: 150, make: makeEngine },
+  { id: 'crankshaft', discipline: 'mechanical', difficulty: 3, tab: 'Crank', title: 'Firing order', brief: 'Choose the firing order that lets this four-stroke run as smooth as it can.', parSeconds: 150, make: makeCrankshaft },
 ];
 
 export function byId(id: string): PuzzleDef {

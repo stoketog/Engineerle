@@ -6,7 +6,7 @@ import { MAX_DAY_POINTS } from '@/engineerle/scoring';
 import type { GraphSpec } from '@/engineerle/graph';
 import type { LeverSpec } from '@/engineerle/lever';
 import type { BridgeSpec } from '@/engineerle/truss';
-import type { CrankSpec } from '@/engineerle/crank';
+import type { CrankshaftSpec } from '@/engineerle/crankshaft';
 import type { BargeSpec } from '@/engineerle/barge';
 import { addSeconds, dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore, type PuzzleRecord } from '@/engineerle/store';
 import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/dates';
@@ -22,7 +22,7 @@ import { EngineerleMark, EngineerleWord } from './Logo';
 import { GraphPuzzle } from './GraphPuzzle';
 import { LeverPuzzle } from './LeverPuzzle';
 import { BridgePuzzle } from './BridgePuzzle';
-import { EnginePuzzle } from './EnginePuzzle';
+import { CrankshaftPuzzle } from './CrankshaftPuzzle';
 import { BargePuzzle } from './BargePuzzle';
 
 const SEEN = 'engineerle:v1:help-seen';
@@ -33,7 +33,7 @@ function renderPuzzle(id: string, spec: { kind: string }, common: { record: Puzz
     case 'waveform': return <GraphPuzzle spec={spec as GraphSpec} {...common} />;
     case 'lever': return <LeverPuzzle spec={spec as LeverSpec} {...common} />;
     case 'bridge': return <BridgePuzzle spec={spec as BridgeSpec} {...common} />;
-    case 'engine': return <EnginePuzzle spec={spec as CrankSpec} {...common} />;
+    case 'crankshaft': return <CrankshaftPuzzle spec={spec as CrankshaftSpec} {...common} />;
     case 'barge': return <BargePuzzle spec={spec as BargeSpec} {...common} />;
     default: return null;
   }
@@ -324,7 +324,7 @@ function EngineerleHelp({ onClose }: { onClose: () => void }) {
           <li><b className="text-white">Curve.</b> Read the graph and type the equation. The dots are points it passes through exactly.</li>
           <li><b className="text-white">Lever.</b> Slide the pivot under a loaded plank so it hangs level when released.</li>
           <li><b className="text-white">Bridge.</b> Pick the members that are too thin, then send the truck over. Squeezed members buckle, stretched ones snap.</li>
-          <li><b className="text-white">Engine.</b> Set each crank throw so the forces and the rocking couples cancel out.</li>
+          <li><b className="text-white">Firing order.</b> Choose the order a four-stroke fires its cylinders so the pistons&apos; shaking forces and rocking couples cancel as far as that engine allows.</li>
           <li><b className="text-white">Barge.</b> Balance her with ballast so she floats upright and level.</li>
         </ol>
         <p>You get three guesses on each, and a clock runs while you work. A quick first-guess solve is worth 100 points; a second guess is worth 65% of that and a third 35%, and the points shrink gently once you pass the par time shown on each puzzle (never below 40% of the guess value). A miss only shows you what happened, with no hints, and the answer appears when the puzzle is over.</p>
