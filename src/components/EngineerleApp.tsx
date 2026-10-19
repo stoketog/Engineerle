@@ -11,6 +11,7 @@ import type { CircuitSpec } from '@/engineerle/circuit';
 import type { PowerlineSpec } from '@/engineerle/powerline';
 import type { FilterSpec } from '@/engineerle/rcfilter';
 import type { OpampSpec } from '@/engineerle/opamp';
+import type { RocketSpec } from '@/engineerle/rocket';
 import { addSeconds, dayDone, dayPoints, daySolved, emptyStore, getDay, loadStore, recordAttempt, saveStore, shareText, square, streak, totals, type EngineerleStore, type PuzzleRecord } from '@/engineerle/store';
 import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/dates';
 import { useSettings } from '@/hooks/useSettings';
@@ -31,6 +32,7 @@ import { CircuitPuzzle } from './CircuitPuzzle';
 import { PowerlinePuzzle } from './PowerlinePuzzle';
 import { RcFilterPuzzle } from './RcFilterPuzzle';
 import { OpampPuzzle } from './OpampPuzzle';
+import { RocketPuzzle } from './RocketPuzzle';
 
 const SEEN = 'engineerle:v1:help-seen';
 
@@ -130,6 +132,7 @@ export default function EngineerleApp() {
       case 'powerline': return <PowerlinePuzzle key={key} spec={p.spec as PowerlineSpec} {...common} />;
       case 'rcfilter': return <RcFilterPuzzle key={key} spec={p.spec as FilterSpec} {...common} />;
       case 'opamp': return <OpampPuzzle key={key} spec={p.spec as OpampSpec} {...common} />;
+      case 'rocket': return <RocketPuzzle key={key} spec={p.spec as RocketSpec} {...common} />;
       default: return null;
     }
   };

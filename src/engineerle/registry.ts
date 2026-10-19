@@ -6,6 +6,7 @@ import { makeCircuit } from './circuit';
 import { makePowerline } from './powerline';
 import { makeFilter } from './rcfilter';
 import { makeOpamp } from './opamp';
+import { makeRocket } from './rocket';
 import { makeBarge } from './barge';
 
 /**
@@ -47,6 +48,7 @@ export const POOL: PuzzleDef[] = [
   { id: 'powerline', discipline: 'electrical', difficulty: 1, tab: 'Power line', title: 'Send it down the line', brief: 'Choose the transformer ratio that keeps the line loss low without flashing over.', parSeconds: 90, make: makePowerline },
   { id: 'rcfilter', discipline: 'electronics', difficulty: 2, tab: 'RC filter', title: 'Tame the noise', brief: 'Choose R and C so the tone you want gets through and the noise does not.', parSeconds: 90, make: makeFilter },
   { id: 'opamp', discipline: 'electronics', difficulty: 2, tab: 'Op-amp', title: 'Set the gain', brief: 'Pick the feedback resistors so the output reaches the target without clipping.', parSeconds: 90, make: makeOpamp },
+  { id: 'rocket', discipline: 'aerospace', difficulty: 2, tab: 'Staging', title: 'Split the stages', brief: 'Divide the propellant between two stages so the rocket reaches orbit.', parSeconds: 120, make: makeRocket },
   { id: 'barge', discipline: 'structures', difficulty: 2, tab: 'Barge', title: 'Level the barge', brief: 'Fill the ballast tanks until she floats upright and level.', parSeconds: 150, make: makeBarge },
   { id: 'bridge', discipline: 'structures', difficulty: 3, tab: 'Bridge', title: 'The failing bridge', brief: 'Pick the members that buckle or snap, then test the truck.', parSeconds: 150, make: makeBridge },
   { id: 'crankshaft', discipline: 'mechanical', difficulty: 3, tab: 'Firing order', title: 'Smooth running', brief: 'A four-stroke fires each cylinder once every two turns. Pick the firing order that cancels the shaking.', parSeconds: 150, make: makeCrankshaft },
