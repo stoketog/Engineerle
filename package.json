@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/engineerle.test.ts",
+    "test": "node scripts/run-tests.mjs",
     "test:e2e": "tsx tests/e2e.ts",
     "build:static": "node scripts/build.mjs",
     "serve:static": "node scripts/serve.mjs"
