@@ -1,15 +1,20 @@
 import { rng } from './rand';
 import { parseExpr, sample, type Fn } from './expr';
 
-/** Puzzle 1: read the equation off the graph. */
+/**
+ * Read the equation off the graph. Two skins share this module: the plain curve puzzle (in x) and the oscilloscope
+ * waveform (a sine in t, with a volts-per-division and time-per-division graticule).
+ */
 
-export type GraphFamily = 'quadratic' | 'cubic' | 'sine' | 'exponential' | 'rational' | 'abs-shift';
+export type GraphFamily = 'quadratic' | 'cubic' | 'sine' | 'exponential' | 'rational' | 'abs-shift' | 'waveform';
 
 export interface GraphSpec {
-  kind: 'graph';
+  kind: 'graph' | 'waveform';
   family: GraphFamily;
   /** Coefficients, meaning depends on the family (see `graphFn`). */
   c: number[];
+  /** Waveforms only: the scope settings, volts per division and seconds per division. The screen is 10 by 8 divisions. */
+  scope?: { vdiv: number; tdiv: number };
   /** The answer as the setter would write it (shown on a miss, never to be matched literally). */
   answer: string;
   view: { xmin: number; xmax: number; ymin: number; ymax: number };
@@ -27,6 +32,52 @@ export function graphFn(s: GraphSpec): Fn {
     case 'exponential': return (x) => c[0] * c[1] ** x + c[2];
     case 'rational': return (x) => c[0] / (x - c[1]) + c[2];
     case 'abs-shift': return (x) => c[0] * Math.abs(x - c[1]) + c[2];
+    // amplitude (V), frequency (Hz), phase (rad), offset (V); x is time in seconds
+    case 'waveform': return (t) => c[0] * Math.sin(2 * Math.PI * c[1] * t + c[2]) + c[3];
+  }
+}
+
+/** The phase k·15° written as a short fraction of pi, e.g. 5 -> "5 pi/12", 6 -> "pi/2". */
+function phaseText(k: number): string {
+  if (k === 0) return '';
+  const g = (a: number, b: number): number => (b ? g(b, a % b) : a);
+  const d = g(k, 12);
+  const num = k / d, den = 12 / d;
+  return ` + ${num === 1 ? '' : num + ' '}pi${den === 1 ? '' : '/' + den}`;
+}
+
+/**
+ * An oscilloscope trace: v(t) = A sin(2 pi f t + p) + c. A is 0.5 to 5 V in half-volt steps, f from 50 Hz to 5 kHz, p a
+ * multiple of 15 degrees, c zero or a multiple of half a volt. The scope is set so the trace fits the screen with a period
+ * that is a whole number of half-divisions, 2 to 5 periods across the ten divisions, and an amplitude of at least one division.
+ */
+export function makeWaveform(seed: number): GraphSpec {
+  const r = rng(seed);
+  const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)];
+  const TDIV = [0.0001, 0.0002, 0.0005, 0.001, 0.002, 0.005, 0.01]; // seconds per division
+  const PERIOD_DIVS = [2, 2.5, 4, 5];
+  const VDIV = [0.1, 0.2, 0.5, 1, 2];
+  for (;;) {
+    const tdiv = pick(TDIV), k = pick(PERIOD_DIVS);
+    const f = Math.round(1 / (k * tdiv));
+    if (f < 50 || f > 5000 || Math.abs(f * k * tdiv - 1) > 1e-9) continue;
+    const A = (1 + Math.floor(r() * 10)) / 2;
+    const c = pick([0, 0, 0.5, -0.5, 1, -1, 1.5, -1.5, 2, -2]);
+    // the largest volts/division that still gives the wave at least one division of amplitude and keeps it on screen
+    const vdiv = [...VDIV].reverse().find((v) => A / v >= 1 && (A + Math.abs(c)) / v <= 3.8);
+    if (vdiv === undefined) continue;
+    const kp = Math.floor(r() * 24);
+    const p = (kp * Math.PI) / 12;
+    const num = (n: number) => String(Number(n.toFixed(3)));
+    const answer = `${num(A)} sin(2 pi ${f} t${phaseText(kp)})${c === 0 ? '' : c < 0 ? ` - ${num(-c)}` : ` + ${num(c)}`}`;
+    return {
+      kind: 'waveform',
+      family: 'waveform',
+      c: [A, f, p, c],
+      answer,
+      view: { xmin: 0, xmax: 10 * tdiv, ymin: -4 * vdiv, ymax: 4 * vdiv },
+      scope: { vdiv, tdiv },
+    };
   }
 }
 
@@ -106,7 +157,7 @@ export interface GraphVerdict {
 export function checkGraph(spec: GraphSpec, text: string): GraphVerdict {
   let f: Fn;
   try {
-    f = parseExpr(text);
+    f = parseExpr(text, spec.kind === 'waveform' ? 't' : 'x');
   } catch (e) {
     return { ok: false, match: 0, error: (e as Error).message };
   }
@@ -115,6 +166,8 @@ export function checkGraph(spec: GraphSpec, text: string): GraphVerdict {
   const tol = 0.012 * (ymax - ymin);
   const N = 81;
   const a = sample(t, xmin, xmax, N), b = sample(f, xmin, xmax, N);
+  // an expression that gives no number anywhere (1/0, ln(-1)) draws nothing: refuse it rather than count it as a miss
+  if (b.every((v) => Number.isNaN(v))) return { ok: false, match: 0, error: 'That gives no values to draw' };
   let seen = 0, good = 0;
   for (let i = 0; i < N; i++) {
     if (Number.isNaN(a[i])) continue; // the target is undefined here (an asymptote)

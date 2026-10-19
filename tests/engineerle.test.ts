@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { parseExpr } from '@/engineerle/expr';
-import { makeGraph, checkGraph, graphFn, type GraphSpec } from '@/engineerle/graph';
+import { makeGraph, makeWaveform, checkGraph, graphFn, type GraphSpec } from '@/engineerle/graph';
 import { makeLever, balancePoint, isLevel, settleAngle, tolerance, moment } from '@/engineerle/lever';
 import { buildTruss, solveTruss, truckLoads, makeBridge, envelope, memberLength, capacity, UPGRADE } from '@/engineerle/truss';
 import { makeBarge, bargeState, isSolved, solutions as bargeSolutions, withinLimits } from '@/engineerle/barge';
@@ -47,6 +47,59 @@ test('graph generation is deterministic and varied', () => {
   assert.ok(new Set(Array.from({ length: 30 }, (_, i) => makeGraph(i * 977).family)).size >= 4);
   const g = makeGraph(12);
   assert.ok(Number.isFinite(graphFn(g)(0)) || g.family === 'rational');
+});
+
+console.log('Waveform (oscilloscope)');
+test('every generated waveform is an A sin(2 pi f t + p) + c in the ranges the brief gives, and its stated answer solves it', () => {
+  for (let seed = 1; seed <= 500; seed++) {
+    const w = makeWaveform(seed * 40503);
+    assert.equal(w.kind, 'waveform');
+    const [A, f, p, c] = w.c;
+    assert.ok(A >= 0.5 && A <= 5 && Math.abs(A * 2 - Math.round(A * 2)) < 1e-9, `A ${A}`);
+    assert.ok(f >= 50 && f <= 5000, `f ${f}`);
+    const k = (p * 12) / Math.PI;
+    assert.ok(Math.abs(k - Math.round(k)) < 1e-9 && k >= 0 && k < 24, `phase ${p}`);
+    assert.ok(Math.abs(c * 2 - Math.round(c * 2)) < 1e-9, `c ${c}`);
+    assert.ok(w.scope && w.scope.vdiv > 0 && w.scope.tdiv > 0);
+    // the trace fits the screen and fills a useful part of it
+    assert.ok(Math.abs(c) + A <= 4 * w.scope.vdiv * 0.96 && A >= w.scope.vdiv, `fit A=${A} c=${c} vdiv=${w.scope.vdiv}`);
+    // two to five periods across the ten divisions, a period being a whole number of half-divisions
+    const periods = 10 * w.scope.tdiv * f;
+    assert.ok(periods >= 2 - 1e-9 && periods <= 5 + 1e-9, `periods ${periods}`);
+    assert.ok(checkGraph(w, w.answer).ok, `${w.answer}`);
+  }
+});
+const FIXED: GraphSpec = { kind: 'waveform', family: 'waveform', c: [2, 500, Math.PI / 6, 1], answer: '2 sin(2 pi 500 t + pi/6) + 1', view: { xmin: 0, xmax: 0.004, ymin: -4, ymax: 4 }, scope: { vdiv: 1, tdiv: 0.0004 } };
+test('equivalent ways of writing the answer all pass', () => {
+  for (const t of ['2 sin(2 pi 500 t + pi/6) + 1', '2*sin(2*pi*500*t+pi/6)+1', '1 + 2 sin(pi/6 + 2 pi 500 t)', '2sin(1000πt + π/6) + 1', 'v = 2 sin(2π·500·t + 30π/180) + 1', 'y = 2sin(6.283185307179586*500*t + 0.5235987755982988) + 1']) {
+    assert.ok(checkGraph(FIXED, t).ok, t);
+  }
+});
+test('a phase out by 15 degrees, a wrong frequency, a wrong amplitude or offset all fail', () => {
+  const fits = (t: string) => checkGraph(FIXED, t);
+  assert.ok(fits('2 sin(2 pi 500 t + pi/6) + 1').ok);
+  assert.ok(!fits('2 sin(2 pi 500 t + pi/6 + pi/12) + 1').ok, '15 degrees later');
+  assert.ok(!fits('2 sin(2 pi 500 t + pi/6 - pi/12) + 1').ok, '15 degrees earlier');
+  assert.ok(!fits('2 sin(2 pi 520 t + pi/6) + 1').ok, '4% fast');
+  assert.ok(!fits('2.25 sin(2 pi 500 t + pi/6) + 1').ok, 'amplitude');
+  assert.ok(!fits('2 sin(2 pi 500 t + pi/6)').ok, 'offset missing');
+  assert.ok(!fits('2 sin(2 pi 500 t + pi/6 + pi) + 1').ok, 'inverted');
+});
+test('unreadable or empty answers are refused and so cost no guess; x is not the variable of a waveform', () => {
+  const w = makeWaveform(9);
+  for (const bad of ['', '   ', 't +', '1/0', 'sin(', 'alert(1)', 'ln(-1)', '2 sin(2 pi 500 x)']) {
+    const v = checkGraph(w, bad);
+    assert.ok(!v.ok && typeof v.error === 'string' && v.error.length > 0, `${JSON.stringify(bad)} -> ${JSON.stringify(v)}`);
+  }
+});
+test('the ordinary curve puzzle still reads x and still refuses an expression that draws nothing', () => {
+  const g = makeGraph(5);
+  assert.ok(checkGraph(g, g.answer).ok);
+  const v = checkGraph(g, '1/0');
+  assert.ok(!v.ok && v.error);
+  assert.ok(parseExpr('t', 't')(3) === 3 && parseExpr('2 pi t', 't')(1) === 2 * Math.PI);
+  assert.throws(() => parseExpr('x', 't'));
+  assert.throws(() => parseExpr('t'));
 });
 
 console.log('Puzzle 2: the lever');

@@ -321,7 +321,7 @@ function EngineerleHelp({ onClose }: { onClose: () => void }) {
       <div className="flex flex-col gap-3 text-sm" style={{ color: 'var(--color-mist-300)' }}>
         <p>Five engineering puzzles a day, the same for everyone. Each has real physics behind it, so you can work the answer out rather than guess.</p>
         <ol className="m-0 flex list-none flex-col gap-2 p-0">
-          <li><b className="text-white">Curve.</b> Read the graph and type the equation. The dots are points it passes through exactly.</li>
+          <li><b className="text-white">Scope.</b> Read the trace on the oscilloscope and write the equation of the voltage, with time in seconds.</li>
           <li><b className="text-white">Lever.</b> Slide the pivot under a loaded plank so it hangs level when released.</li>
           <li><b className="text-white">Bridge.</b> Pick the members that are too thin, then send the truck over. Squeezed members buckle, stretched ones snap.</li>
           <li><b className="text-white">Firing order.</b> Choose the order a four-stroke fires its cylinders so the pistons&apos; shaking forces and rocking couples cancel as far as that engine allows.</li>
