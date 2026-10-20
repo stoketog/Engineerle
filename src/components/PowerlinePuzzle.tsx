@@ -98,6 +98,9 @@ export function PowerlinePuzzle({ spec, record, onAttempt }: PuzzleProps<Powerli
   latest.current = { spec, record, onAttempt, play };
   useEffect(() => () => window.clearTimeout(timer.current), []);
   const answers = spec.ratios.filter((r) => evaluate(spec, r).solved);
+  const mountedSolved = useRef(record.solved);
+  // Mounted already solved (opened again, or after a reload)? Then the dial is back at its start and the only honest thing to show is a setting that works.
+  const mine = record.solved && !mountedSolved.current;
 
   const verdict = (ev: Evaluation) => {
     const L = latest.current;
@@ -138,7 +141,7 @@ export function PowerlinePuzzle({ spec, record, onAttempt }: PuzzleProps<Powerli
   };
 
   const st = shown?.state;
-  const solvedShown = done && !record.solved ? null : shown;
+  const solvedShown = done && !mine ? null : shown;
   return (
     <Board
       info={INFO}
@@ -146,7 +149,7 @@ export function PowerlinePuzzle({ spec, record, onAttempt }: PuzzleProps<Powerli
       testId="puzzle-powerline"
       view={
         <div className="ens-view" data-testid="power-view">
-          <Diagram spec={spec} ratio={done && !record.solved ? answers[0] : ratio} shown={solvedShown} running={running} />
+          <Diagram spec={spec} ratio={done && !mine ? answers[0] : ratio} shown={solvedShown} running={running} />
           <div className="ens-readout">send {fmtPower(spec.power)} · generator {fmtVolts(spec.vGen)}</div>
           {st && !running && (
             <div className="ens-readout r" data-testid="power-result">
@@ -162,7 +165,7 @@ export function PowerlinePuzzle({ spec, record, onAttempt }: PuzzleProps<Powerli
     >
       {done ? (
         <div className="ens-note" data-k={record.solved ? 'ok' : 'bad'} data-testid="power-final">
-          {record.solved ? 'Solved. ' : 'Out of guesses. '}A step-up ratio of <b className="font-mono">1 : {record.solved ? ratio : answers[0]}</b> keeps the loss under {spec.maxLossPct}% and the line under {fmtVolts(spec.maxVLine)}.
+          {record.solved ? 'Solved. ' : 'Out of guesses. '}A step-up ratio of <b className="font-mono">1 : {mine ? ratio : answers[0]}</b> keeps the loss under {spec.maxLossPct}% and the line under {fmtVolts(spec.maxVLine)}.
         </div>
       ) : (
         <p className="ens-p">

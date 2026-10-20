@@ -17,6 +17,9 @@ import { PUZZLES_PER_DAY } from './scoring';
  * ever, whatever order dates are asked for in, the calendar is cut into eras of 512 days counted from the first
  * day of the game: an era's first day has no memory, and each day after it remembers the two before. (So the
  * "not on the last two days" rule is waived for the first two days of an era, about once every 17 months.)
+ *
+ * A day is chosen only from the puzzles active on that date (`since` and `until` on the registry entry), so adding or
+ * retiring a puzzle never changes a day that has already come: nobody's saved progress, streak or sent results move.
  */
 
 export const ERA_DAYS = 512;
@@ -59,21 +62,25 @@ function choose(dateKey: string, pool: PuzzleDef[], yesterday: Set<string>, dayB
 
 const cache = new Map<string, string[]>();
 
+const KEYED = /^\d{4}-\d{2}-\d{2}$/;
+/** The puzzles that can be served on a date. */
+const activeOn = (pool: PuzzleDef[], dateKey: string) => pool.filter((p) => (!p.since || !KEYED.test(p.since) || p.since <= dateKey) && (!p.until || !KEYED.test(p.until) || dateKey < p.until));
+
 /** The ids of the day's puzzles, easiest first. Fewer than five only if the pool has fewer. */
 export function pickDay(dateKey: string, pool: PuzzleDef[] = POOL): string[] {
-  const poolKey = pool.map((p) => p.id).join(',');
   const n = KEY.test(dateKey) ? daysBetween(FIRST_DAY, dateKey) : NaN;
   if (!Number.isFinite(n)) return choose(String(dateKey), pool, new Set(), new Set());
   const eraStart = Math.floor(n / ERA_DAYS) * ERA_DAYS;
   const at = (i: number) => dateKeyFor(i);
   const sets: string[][] = [];
   for (let i = eraStart; i <= n; i++) {
-    const key = `${poolKey}|${i}`;
+    const active = activeOn(pool, at(i));
+    const key = `${active.map((p) => p.id).join(',')}|${i}`;
     let ids = cache.get(key);
     if (!ids) {
       const yesterday = new Set(i - 1 >= eraStart ? sets[sets.length - 1] : []);
       const dayBefore = new Set(i - 2 >= eraStart ? sets[sets.length - 2] : []);
-      ids = choose(at(i), pool, yesterday, dayBefore);
+      ids = choose(at(i), active, yesterday, dayBefore);
       if (cache.size > 4096) cache.clear();
       cache.set(key, ids);
     }

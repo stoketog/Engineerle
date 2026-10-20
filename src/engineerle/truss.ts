@@ -222,6 +222,17 @@ export function utilisation(force: number, area: number, length: number): number
   return Math.abs(force) / capacity(area, length, force < 0);
 }
 
+/**
+ * How strongly to tint each member while the truck crosses, 0 to 1: its force against the largest force in the bridge.
+ * Deliberately blind to member size and capacity, so the colours show where the load is going, never which members are
+ * about to fail (that is the puzzle).
+ */
+export function loadShade(forces: number[]): number[] {
+  const abs = forces.map((f) => (Number.isFinite(f) ? Math.abs(f) : 0));
+  const top = Math.max(0, ...abs);
+  return abs.map((f) => (top > 0 ? f / top : 0));
+}
+
 /* ───────────────────────────── the moving load, dynamically ───────────────────────────── */
 
 /** Fixed time step for everything that moves (s). The animation advances in whole steps, so it looks the same at any frame rate. */

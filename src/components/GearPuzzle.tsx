@@ -48,6 +48,9 @@ export function GearPuzzle({ spec, record, onAttempt }: PuzzleProps<GearSpec>) {
   const [shown, setShown] = useState<Evaluation | null>(null);
   const api = useRef<Api | null>(null);
   const done = record.done;
+  const mountedSolved = useRef(record.solved);
+  // Mounted already solved (opened again, or after a reload)? Then the dial is back at its start and the only honest thing to show is a setting that works.
+  const mine = record.solved && !mountedSolved.current;
   const latest = useRef({ spec, record, onAttempt, play, teeth, settings });
   latest.current = { spec, record, onAttempt, play, teeth, settings };
 
@@ -187,8 +190,8 @@ export function GearPuzzle({ spec, record, onAttempt }: PuzzleProps<GearSpec>) {
 
   useEffect(() => api.current?.setTeeth(teeth), [teeth]);
   useEffect(() => {
-    if (done && !record.solved) setTeeth(spec.example.map((m) => ({ ...m })));
-  }, [done, record.solved, spec.example]);
+    if (done && !mine) setTeeth(spec.example.map((m) => ({ ...m })));
+  }, [done, mine, spec.example]);
 
   const busy = phase !== 'hold' && !done;
   const run = () => {
@@ -217,10 +220,10 @@ export function GearPuzzle({ spec, record, onAttempt }: PuzzleProps<GearSpec>) {
       {done ? (
         <div className="ens-note" data-k={record.solved ? 'ok' : 'bad'} data-testid="gear-final">
           {record.solved ? 'Right speed. ' : 'Out of guesses. '}
-          {record.solved ? 'Your train' : 'One train that works'} is{' '}
-          <b className="font-mono">{(record.solved ? teeth : spec.example).map((m) => `${m.driver}→${m.driven}`).join(', ')}</b>
-          {' '}teeth: a ratio of <b className="font-mono">{Number((evaluate(spec, record.solved ? teeth : spec.example).ratio ?? 0).toPrecision(4))}</b> and an output torque of{' '}
-          <b className="font-mono">{Number((evaluate(spec, record.solved ? teeth : spec.example).torque ?? 0).toPrecision(3))} N·m</b> after the 2% loss in each mesh.
+          {mine ? 'Your train' : 'One train that works'} is{' '}
+          <b className="font-mono">{(mine ? teeth : spec.example).map((m) => `${m.driver}→${m.driven}`).join(', ')}</b>
+          {' '}teeth: a ratio of <b className="font-mono">{Number((evaluate(spec, mine ? teeth : spec.example).ratio ?? 0).toPrecision(4))}</b> and an output torque of{' '}
+          <b className="font-mono">{Number((evaluate(spec, mine ? teeth : spec.example).torque ?? 0).toPrecision(3))} N·m</b> after the 2% loss in each mesh.
         </div>
       ) : (
         <>

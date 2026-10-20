@@ -204,4 +204,16 @@ test('the failed span falls, nothing goes below the river, and the wreck comes t
   before.forEach((p, i) => assert.ok(Math.hypot(c.pos[i].x - p.x, c.pos[i].y - p.y) < 0.02, `joint ${i} still moving`));
 });
 
+test('the live colouring depends on the forces alone, never on member size or capacity, so it cannot point at the weak members', () => {
+  const forces = [120, -300, 40, -10, 0];
+  const shade = T.loadShade(forces);
+  assert.equal(shade.length, forces.length);
+  assert.ok(shade.every((x) => x >= 0 && x <= 1));
+  assert.equal(shade[1], Math.max(...shade), 'the member carrying the most is the strongest tint');
+  assert.equal(shade[4], 0, 'a member carrying nothing is untinted');
+  assert.deepEqual(T.loadShade(forces.map((f) => f * 7)), shade, 'only the pattern of forces matters, not their size');
+  assert.deepEqual(T.loadShade([0, 0, 0]), [0, 0, 0], 'a bridge with no load has no tint (and no division by zero)');
+  assert.deepEqual(T.loadShade([Number.NaN, 5]).every(Number.isFinite), true, 'a bad force cannot poison the rest');
+});
+
 console.log(`\n${passed} passed`);

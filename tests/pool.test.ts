@@ -130,4 +130,22 @@ test('a puzzle built for a date does not depend on where it sits in the day', ()
   }
 });
 
+console.log('Growing the pool');
+test('a puzzle added with a start date changes no earlier day, and joins the pool from its date', () => {
+  const grown: PuzzleDef[] = [...POOL, { ...POOL[0], id: 'pumpx', since: '2027-03-01' }];
+  for (const d of days(500)) {
+    if (d < '2027-03-01') assert.deepEqual(pickDay(d, grown), pickDay(d, POOL), `${d} is unchanged`);
+  }
+  assert.ok(days(120, '2027-03-01').some((d) => pickDay(d, grown).includes('pumpx')), 'it is served once it has started');
+  assert.ok(days(120, '2027-03-01').every((d) => new Set(pickDay(d, grown)).size === 5), 'still five different ones');
+});
+test('a retired puzzle (until) stops being served from its end date and leaves earlier days alone', () => {
+  const kept = POOL.find((p) => p.id === 'lever')!;
+  const retired: PuzzleDef[] = POOL.map((p) => (p === kept ? { ...p, until: '2027-01-15' } : p));
+  for (const d of days(400)) {
+    if (d < '2027-01-15') assert.deepEqual(pickDay(d, retired), pickDay(d, POOL), `${d} is unchanged`);
+    else assert.ok(!pickDay(d, retired).includes('lever'), `${d} has no lever`);
+  }
+});
+
 console.log(`\n${passed} passed`);

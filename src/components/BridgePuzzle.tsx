@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { MAX_ATTEMPTS } from '@/engineerle/scoring';
 import { byId } from '@/engineerle/registry';
-import { DYN_STEP, Dynamics, SAG, UPGRADE, buildTruss, crossBridge, crossingEnd, crossingLoads, crossingSpeed, crossingStart, memberLength, startCollapse, stepCollapse, toM2, utilisation, type BridgeSpec, type Collapse } from '@/engineerle/truss';
+import { DYN_STEP, Dynamics, SAG, UPGRADE, buildTruss, crossBridge, loadShade, crossingEnd, crossingLoads, crossingSpeed, crossingStart, memberLength, startCollapse, stepCollapse, toM2, utilisation, type BridgeSpec, type Collapse } from '@/engineerle/truss';
 import { useSettings } from '@/hooks/useSettings';
 import { Board, Note, Unsupported, useStage, type PuzzleProps } from './Board';
 import { box, cyl, outline, setStrut, shadowFloor, steel } from './stage';
@@ -237,6 +237,7 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
         } else truck.visible = false;
       };
       const paint = (utils: number[] | null, force: number[] | null) => {
+        const shade = force ? loadShade(force) : [];
         t.members.forEach((_, i) => {
           const m = mats[i];
           const isUp = sim.sel.includes(i);
@@ -244,11 +245,9 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
           let c = STEEL.clone();
           let e = 0;
           if (utils && force) {
-            const u = utils[i];
+            // tint by where the load goes (stretched or squeezed), not by how close a member is to failing
             const hue = force[i] >= 0 ? TEN : COMP;
-            c = STEEL.clone().lerp(hue, Math.min(1, u / 0.85));
-            if (u > 0.85) c.lerp(RED, Math.min(1, (u - 0.85) / 0.2));
-            e = u > 1 ? 0.7 : 0;
+            c = STEEL.clone().lerp(hue, shade[i] ?? 0);
           } else if (isUp) {
             c = UP.clone();
             e = 0.35;
@@ -494,7 +493,7 @@ export function BridgePuzzle({ spec, record, onAttempt }: PuzzleProps<BridgeSpec
       {!done ? (
         <>
           <p className="ens-p">
-            A {(spec.truck.weight / 9810).toFixed(1)} t truck will cross. Choose <b>{spec.budget}</b> members to give the heavier section ({UPGRADE}× the area), then test it. Blue members are stretched, orange are squeezed, red are about to fail.
+            A {(spec.truck.weight / 9810).toFixed(1)} t truck will cross. Choose <b>{spec.budget}</b> members to give the heavier section ({UPGRADE}× the area), then test it. While the truck crosses, blue members are stretched and orange are squeezed.
           </p>
           {groups.map(([title, ids]) => (
             <div key={title}>

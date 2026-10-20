@@ -466,6 +466,24 @@ async function main() {
     }
   });
 
+  console.log('\nRevisiting a solved puzzle');
+  const num = (txt: string, re: RegExp) => { const m = re.exec(txt); if (!m) throw new Error(`no match for ${re} in: ${txt}`); return m; };
+  const ohms = (v: string, u: string) => Number(v) * (u === 'MΩ' ? 1e6 : u === 'kΩ' ? 1e3 : 1);
+  const farads = (v: string, u: string) => Number(v) * (u === 'µF' ? 1e-6 : 1e-9);
+  const reopened = async (id: string) => { useDay(dayWith(id)); const r = await openEn(b, { seed: [1, 1, 1, 1, 1] }); await q(r.page, tab(id)).click(); return r; };
+  await t('a solved puzzle opened again (or after a reload) shows a setting that really works, never the starting dial', async () => {
+    let r = await reopened('resistor'); let tx = await text(r.page, 'circuit-final');
+    { const m = num(tx, /resistor of ([\d.]+) (MΩ|kΩ|Ω)/); ok(circuitEval(rSpec, ohms(m[1], m[2])).solved, `resistor: ${tx}`); } await r.ctx.close();
+    r = await reopened('powerline'); tx = await text(r.page, 'power-final');
+    { const m = num(tx, /1 : (\d+)/); ok(powerEval(pSpec, Number(m[1])).solved, `power line: ${tx}`); } await r.ctx.close();
+    r = await reopened('rcfilter'); tx = await text(r.page, 'rc-final');
+    { const m = num(tx, /R = ([\d.]+) (MΩ|kΩ|Ω) and C = ([\d.]+) (µF|nF)/); ok(rcEval(fSpec, ohms(m[1], m[2]), farads(m[3], m[4])).solved, `RC: ${tx}`); } await r.ctx.close();
+    r = await reopened('opamp'); tx = await text(r.page, 'op-final');
+    { const m = num(tx, /Rf = ([\d.]+) (MΩ|kΩ|Ω) and Rg = ([\d.]+) (MΩ|kΩ|Ω)/); ok(opEval(oSpec, ohms(m[1], m[2]), ohms(m[3], m[4])).solved, `op-amp: ${tx}`); } await r.ctx.close();
+    r = await reopened('aircraft'); tx = await text(r.page, 'air-final'); ok(tx.includes('A loading that works'), `aircraft: ${tx}`); await r.ctx.close();
+    r = await reopened('gears'); tx = await text(r.page, 'gear-final'); ok(tx.includes('One train that works'), `gears: ${tx}`); await r.ctx.close();
+  });
+
   await t('Engineerle follows the settings: light theme and Low CPU draw every puzzle without errors', async () => {
     useDay(DAY0);
     const { ctx, page: p, errors } = await openEn(b, { settings: { volume: 70, muted: true, theme: 'light', lowCpu: true, reduceMotion: true } });

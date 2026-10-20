@@ -68,7 +68,7 @@ never twice.
 2. `tests/<name>.test.ts`: check the physics against a worked textbook example, the edge inputs (empty, zero,
    negative, NaN, enormous), and that 1000 seeds all produce a puzzle that is solvable but not already solved.
 3. `src/components/<Name>Puzzle.tsx`: the view and the input. It reports a guess with `onAttempt(solved)`.
-4. One entry in `POOL` in `src/engineerle/registry.ts` (id, discipline, difficulty, tab, title, par seconds), the spec
+4. One entry in `POOL` in `src/engineerle/registry.ts` (id, discipline, difficulty, tab, title, par seconds) **with `since` set to a future date (`'YYYY-MM-DD'`, the first day it may appear)**: days are chosen only from puzzles active on that date, so adding a puzzle never changes a day players have already seen or saved. Retire one with `until`, never by deleting it; the spec
    type in the union in `daily.ts`, and a case in the switch in `EngineerleApp.tsx`.
 5. A solver in `tests/e2e.ts`.
 

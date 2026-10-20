@@ -97,6 +97,9 @@ export function RcFilterPuzzle({ spec, record, onAttempt }: PuzzleProps<FilterSp
   const [msg, setMsg] = useState<{ k: 'ok' | 'bad' | 'warn'; t: string } | null>(null);
   const timer = useRef(0);
   const done = record.done;
+  const mountedSolved = useRef(record.solved);
+  // Mounted already solved (opened again, or after a reload)? Then the dial is back at its start and the only honest thing to show is a setting that works.
+  const mine = record.solved && !mountedSolved.current;
   const latest = useRef({ spec, record, onAttempt, play });
   latest.current = { spec, record, onAttempt, play };
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -148,7 +151,7 @@ export function RcFilterPuzzle({ spec, record, onAttempt }: PuzzleProps<FilterSp
     }, 1500);
   };
 
-  const finalShown = done && !record.solved ? null : shown;
+  const finalShown = done && !mine ? null : shown;
   const st = shown && !drawing ? shown : null;
   return (
     <Board
@@ -172,8 +175,8 @@ export function RcFilterPuzzle({ spec, record, onAttempt }: PuzzleProps<FilterSp
       {done ? (
         <div className="ens-note" data-k={record.solved ? 'ok' : 'bad'} data-testid="rc-final">
           {record.solved ? 'Solved. ' : 'Out of guesses. '}
-          {record.solved ? `R = ${fmtOhms(r)} and C = ${fmtFarads(c)}` : `For instance R = ${fmtOhms(example[0])} and C = ${fmtFarads(example[1])}`} give a cutoff of{' '}
-          <b className="font-mono">{fmtHz(record.solved ? cutoff(r, c) : example[2])}</b>.
+          {mine ? `R = ${fmtOhms(r)} and C = ${fmtFarads(c)}` : `For instance R = ${fmtOhms(example[0])} and C = ${fmtFarads(example[1])}`} give a cutoff of{' '}
+          <b className="font-mono">{fmtHz(mine ? cutoff(r, c) : example[2])}</b>.
         </div>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-3">

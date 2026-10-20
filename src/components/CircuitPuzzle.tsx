@@ -122,6 +122,9 @@ export function CircuitPuzzle({ spec, record, onAttempt }: PuzzleProps<CircuitSp
   const [busy, setBusy] = useState(false);
   const timer = useRef(0);
   const done = record.done;
+  const mountedSolved = useRef(record.solved);
+  // Mounted already solved (opened again, or after a reload)? Then the dial is back at its start and the only honest thing to show is a setting that works.
+  const mine = record.solved && !mountedSolved.current;
   const latest = useRef({ spec, record, onAttempt, play });
   latest.current = { spec, record, onAttempt, play };
   const ohms = dial[idx];
@@ -184,14 +187,14 @@ export function CircuitPuzzle({ spec, record, onAttempt }: PuzzleProps<CircuitSp
       testId="puzzle-circuit"
       view={
         <div className="ens-view" data-testid="circuit-view">
-          <Schematic spec={spec} ohms={done && !record.solved ? answer : ohms} />
+          <Schematic spec={spec} ohms={done && !mine ? answer : ohms} />
           <div className="ens-readout">{spec.topology} · {spec.source.volts} V supply</div>
         </div>
       }
     >
       {done ? (
         <div className="ens-note" data-k={record.solved ? 'ok' : 'bad'} data-testid="circuit-final">
-          {record.solved ? 'Solved. ' : 'Out of guesses. '}A resistor of <b className="font-mono">{fmtOhms(record.solved ? ohms : answer)}</b> in the dashed place makes {what} read {goal}.
+          {record.solved ? 'Solved. ' : 'Out of guesses. '}A resistor of <b className="font-mono">{fmtOhms(mine ? ohms : answer)}</b> in the dashed place makes {what} read {goal}.
         </div>
       ) : (
         <p className="ens-p">

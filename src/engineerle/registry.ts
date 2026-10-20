@@ -38,6 +38,13 @@ export interface PuzzleDef {
   title: string;
   /** One line shown above the puzzle. */
   brief: string;
+  /**
+   * First date (YYYY-MM-DD) this puzzle can be served. Leave it out for a puzzle that has always been in the pool; give
+   * a NEW puzzle a date in the future, so no day that has already been played changes (see select.ts).
+   */
+  since?: string;
+  /** First date it is no longer served. Retire a puzzle with this instead of deleting it, so past days stay as they were. */
+  until?: string;
   /** Time (s) up to which a solve keeps its full time factor. */
   parSeconds: number;
   /** Build the day's puzzle from a seed. Must be pure: the same seed always gives the same puzzle. */

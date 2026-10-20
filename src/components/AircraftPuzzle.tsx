@@ -55,6 +55,9 @@ export function AircraftPuzzle({ spec, record, onAttempt }: PuzzleProps<Aircraft
   const [shown, setShown] = useState<Evaluation | null>(null);
   const api = useRef<Api | null>(null);
   const done = record.done;
+  const mountedSolved = useRef(record.solved);
+  // Mounted already solved (opened again, or after a reload)? Then the dial is back at its start and the only honest thing to show is a setting that works.
+  const mine = record.solved && !mountedSolved.current;
   const latest = useRef({ spec, record, onAttempt, play, pos, settings });
   latest.current = { spec, record, onAttempt, play, pos, settings };
   const example = useMemo(() => solvePlacements(spec), [spec]);
@@ -226,8 +229,8 @@ export function AircraftPuzzle({ spec, record, onAttempt }: PuzzleProps<Aircraft
   useEffect(() => api.current?.setPlacements(pos), [pos]);
   // a puzzle lost shows a loading that works
   useEffect(() => {
-    if (done && !record.solved && example) setPos(example);
-  }, [done, record.solved, example]);
+    if (done && !mine && example) setPos(example);
+  }, [done, mine, example]);
 
   const busy = phase !== 'hold' && !done;
   const total = totalMass(spec);
@@ -258,7 +261,7 @@ export function AircraftPuzzle({ spec, record, onAttempt }: PuzzleProps<Aircraft
       {done ? (
         <div className="ens-note" data-k={record.solved ? 'ok' : 'bad'} data-testid="air-final">
           {record.solved ? 'Balanced. ' : 'Out of guesses. '}
-          {record.solved ? 'This loading' : 'A loading that works'} puts the CG at <b className="font-mono">{cgPosition(spec, pos).toFixed(2)} m</b> ({percentMac(spec, cgPosition(spec, pos)).toFixed(0)}% of the mean chord): a static margin of{' '}
+          {mine ? 'This loading' : 'A loading that works'} puts the CG at <b className="font-mono">{cgPosition(spec, pos).toFixed(2)} m</b> ({percentMac(spec, cgPosition(spec, pos)).toFixed(0)}% of the mean chord): a static margin of{' '}
           <b className="font-mono">{pct(evaluate(spec, pos).sm ?? 0)}</b> and a tail load of <b className="font-mono">{fmtN(evaluate(spec, pos).tail ?? 0)}</b>.
         </div>
       ) : (
