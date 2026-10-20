@@ -20,6 +20,8 @@ import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/da
 import { useSettings } from '@/hooks/useSettings';
 import { useStopwatch } from '@/hooks/useStopwatch';
 import { OBSCURA_URL } from '@/lib/sites';
+import { defaultEnv, fetchDayStats, flushPending, submitResult, type DayResult, type DayStats } from '@/engineerle/stats';
+import { ComparisonChart } from './ComparisonChart';
 import { withSettings } from '@/lib/settings';
 import { IconChart, IconHelp, IconMenu } from './Icons';
 import { Modal } from './Modal';
@@ -79,6 +81,38 @@ export default function EngineerleApp() {
     setTab(first < 0 ? 5 : first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, dateKey]);
+
+  // the finished day goes to the stats service in the background, then the comparison is read back; none of it is awaited by the game
+  const [compare, setCompare] = useState<Compare>({ state: 'idle' });
+  useEffect(() => {
+    if (!ready || !finished) return;
+    let off = false;
+    setCompare({ state: 'loading' });
+    const rec = getDay(loadStore(), dateKey);
+    const result: DayResult = {
+      day: daily.number,
+      ids: daily.puzzles.map((p) => p.def.id),
+      points: rec.puzzles.map((p) => p.points),
+      guesses: rec.puzzles.map((p) => p.attempts),
+      seconds: rec.puzzles.map((p) => Math.min(86_400, Math.max(0, Math.round(p.seconds)))),
+      total: dayPoints(rec),
+    };
+    (async () => {
+      const env = defaultEnv();
+      try {
+        await flushPending(env); // days that did not get through earlier
+        const sent = await submitResult(result, env);
+        const stats = await fetchDayStats(daily.number, env);
+        if (!off) setCompare(stats ? { state: 'ready', stats, mineIncluded: sent !== 'queued' } : { state: 'unavailable' });
+      } catch {
+        if (!off) setCompare({ state: 'unavailable' });
+      }
+    })();
+    return () => {
+      off = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, finished, dateKey, daily.number]);
 
   const closeHelp = () => {
     setModal(null);
@@ -239,7 +273,7 @@ export default function EngineerleApp() {
             )}
           </>
         ) : (
-          <Summary dateKey={dateKey} number={daily.number} puzzles={daily.puzzles} store={store} onGo={goto} />
+          <Summary dateKey={dateKey} number={daily.number} puzzles={daily.puzzles} store={store} compare={compare} onGo={goto} />
         )}
       </div>
 
@@ -286,7 +320,9 @@ function PuzzleClock({ index, par, record, paused, live, onSave }: { index: numb
 
 /* ───────────────────────────── results ───────────────────────────── */
 
-function Summary({ dateKey, number, puzzles, store, onGo }: { dateKey: string; number: number; puzzles: DailyPuzzle[]; store: EngineerleStore; onGo: (i: number) => void }) {
+type Compare = { state: 'idle' } | { state: 'loading' } | { state: 'unavailable' } | { state: 'ready'; stats: DayStats; mineIncluded: boolean };
+
+function Summary({ dateKey, number, puzzles, store, compare, onGo }: { dateKey: string; number: number; puzzles: DailyPuzzle[]; store: EngineerleStore; compare: Compare; onGo: (i: number) => void }) {
   const { settings } = useSettings();
   const day = getDay(store, dateKey);
   const finished = dayDone(day);
@@ -350,6 +386,14 @@ function Summary({ dateKey, number, puzzles, store, onGo }: { dateKey: string; n
           );
         })}
       </ul>
+      {finished && compare.state !== 'idle' && (
+        <ComparisonChart
+          stats={compare.state === 'ready' ? compare.stats : null}
+          loading={compare.state === 'loading'}
+          mineIncluded={compare.state === 'ready' ? compare.mineIncluded : true}
+          you={{ total: pts, points: day.puzzles.map((p) => p.points), ids: day.puzzles.map((p) => p.id) }}
+        />
+      )}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="ens-label">
           Next puzzles in <b className="font-mono" style={{ color: 'var(--en-ink)' }}>{formatCountdown(left)}</b>

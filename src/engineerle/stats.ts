@@ -56,10 +56,14 @@ function browserStorage(): Storage {
   return { getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => void memory.set(k, v), removeItem: (k) => void memory.delete(k), clear: () => memory.clear(), key: () => null, length: 0 } as Storage;
 }
 
+const fromBuild = (read: () => string | undefined): string => { try { return read() || ''; } catch { return ''; } };
+
 /** Where the service lives, from the two public environment variables; empty (so every call is skipped) when unset. */
 export function defaultEnv(): Env {
-  const url = (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_URL : '') || '';
-  const key = (typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY : '') || '';
+  // the build replaces these two exact expressions with the values, so they must be written out in full (a `typeof process`
+  // guard would be false in a browser and hide them); outside a build that does so, reading them can throw, which means unset
+  const url = fromBuild(() => process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const key = fromBuild(() => process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   return { url: url.replace(/\/+$/, ''), key, fetch: (...a) => fetch(...a), storage: browserStorage(), timeoutMs: 5000 };
 }
 
