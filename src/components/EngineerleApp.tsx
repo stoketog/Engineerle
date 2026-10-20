@@ -418,13 +418,14 @@ function EngineerleHelp({ onClose }: { onClose: () => void }) {
     <Modal title="How to play Engineerle" onClose={onClose} testId="ens-help-modal">
       <div className="flex flex-col gap-3 text-sm" style={{ color: 'var(--color-mist-300)' }}>
         <p>Five engineering puzzles a day, the same for everyone. Each has real physics behind it, so you can work the answer out rather than guess.</p>
-        <ol className="m-0 flex list-none flex-col gap-2 p-0">
-          <li><b className="text-white">Curve.</b> Read the graph and type the equation. The dots are points it passes through exactly.</li>
-          <li><b className="text-white">Lever.</b> Slide the pivot under a loaded plank so it hangs level when released.</li>
-          <li><b className="text-white">Bridge.</b> Pick the members that are too thin, then send the truck over. Squeezed members buckle, stretched ones snap.</li>
-          <li><b className="text-white">Firing order.</b> A four-stroke fires one cylinder after another, evenly spaced. Choose the order that makes the engine run smooth.</li>
-          <li><b className="text-white">Barge.</b> Balance her with ballast so she floats upright and level.</li>
-        </ol>
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          <li><b className="text-white">Structures.</b> Find the failing bridge members, level a listing barge.</li>
+          <li><b className="text-white">Mechanical.</b> Find a lever&apos;s pivot, pick a firing order that cancels the shaking, choose gears for a given output speed.</li>
+          <li><b className="text-white">Electrical.</b> Pick the resistor for a target reading, send power down a line at the right voltage.</li>
+          <li><b className="text-white">Electronics.</b> Read a scope, size an RC filter, set an op-amp&apos;s gain.</li>
+          <li><b className="text-white">Aerospace.</b> Split a rocket&apos;s propellant between stages, size a transfer burn, load an aircraft so it balances.</li>
+        </ul>
+        <p>Today&apos;s five are drawn from all of these and are easiest first.</p>
         <p>You get three guesses on each, and a clock runs while a puzzle is open. A puzzle is worth up to 100 points: all of them for a first-guess solve inside its par time, less for a second or third guess and for every second over par. There are no hints.</p>
         <button className="btn-primary mt-1" onClick={onClose} data-testid="ens-help-ok">Start</button>
       </div>

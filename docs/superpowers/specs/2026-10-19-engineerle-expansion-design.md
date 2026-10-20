@@ -1,6 +1,6 @@
 # Engineerle expansion: a wider pool, honest physics, timed scoring, daily comparison
 
-Status: approved by the owner (pool selection and Supabase confirmed 2026-10-19). Nothing in this document is built yet.
+Status: built and verified (see README.md). Approved by the owner (pool selection and Supabase confirmed 2026-10-19). Not yet verified: the Vercel build and the live Supabase call from a browser.
 
 ## 1. What is being asked for
 
