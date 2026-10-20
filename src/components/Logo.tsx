@@ -1,7 +1,7 @@
 import { useId } from 'react';
 
 /** The Engineerle mark: a hex nut with a sine wave running through its bore. */
-export function EngineerleMark({ size = 28, className = '' }: { size?: number; className?: string }) {
+export function EngineerleMark({ size = 28, className = '', animate = false }: { size?: number; className?: string; animate?: boolean }) {
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const hex = Array.from({ length: 6 }, (_, i) => {
     const a = (Math.PI / 3) * i + Math.PI / 6;
@@ -16,7 +16,7 @@ export function EngineerleMark({ size = 28, className = '' }: { size?: number; c
       </defs>
       <polygon points={hex} fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
       <circle cx="32" cy="32" r="14.5" fill="none" stroke="currentColor" strokeWidth="2.4" />
-      <path d={wave} fill="none" stroke="var(--en-accent, #ff8a3d)" strokeWidth="3" strokeLinecap="round" clipPath={`url(#${id}c)`} />
+      <path d={wave} fill="none" stroke="var(--en-accent, #ff8a3d)" strokeWidth="3" strokeLinecap="round" clipPath={`url(#${id}c)`} {...(animate ? { pathLength: 1, strokeDasharray: 1, className: 'ens-draw' } : {})} />
       <line x1="32" y1="2" x2="32" y2="8" stroke="currentColor" strokeWidth="1.6" opacity="0.6" />
       <line x1="32" y1="56" x2="32" y2="62" stroke="currentColor" strokeWidth="1.6" opacity="0.6" />
     </svg>

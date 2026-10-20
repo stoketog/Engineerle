@@ -122,6 +122,8 @@ export function addSeconds(s: EngineerleStore, dateKey: string, index: number, d
 
 export const dayDone = (d: DayRecord) => d.puzzles.every((p) => p.done);
 export const dayPoints = (d: DayRecord) => d.puzzles.reduce((n, p) => n + p.points, 0);
+/** Whole seconds spent on the day's five puzzles. */
+export const dayTimeSeconds = (d: DayRecord) => Math.round(d.puzzles.reduce((n, p) => n + (Number.isFinite(p.seconds) ? p.seconds : 0), 0));
 export const daySolved = (d: DayRecord) => d.puzzles.filter((p) => p.solved).length;
 
 /** Consecutive finished days ending today (or yesterday, if today is still in progress). */

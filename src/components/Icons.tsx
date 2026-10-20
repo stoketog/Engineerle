@@ -31,3 +31,4 @@ export const IconSound = mk(<><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" /><pat
 export const IconMute = mk(<><path d="M4 9.5v5h3.5L12 18.5v-13L7.5 9.5z" /><path d="M16 9.5l5 5M21 9.5l-5 5" /></>);
 export const IconWrench = mk(<><path d="M14.5 6.5a4 4 0 0 0-5 5L4 17l3 3 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-2.5-.5-.5-2.5z" /></>);
 export const IconGlobe = mk(<><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9c-2.5-2.6-3.8-5.6-3.8-9S9.5 5.6 12 3z" /></>);
+export const IconNotes = mk(<><path d="M6 3h9l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" /><path d="M14.5 3v4.5H19" /><path d="M8.5 12h7M8.5 15.5h7M8.5 19h4" /></>);

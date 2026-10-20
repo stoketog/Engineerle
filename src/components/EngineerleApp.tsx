@@ -20,10 +20,15 @@ import { formatCountdown, msUntilNextDay, prettyDate, toDateKey } from '@/lib/da
 import { useSettings } from '@/hooks/useSettings';
 import { useStopwatch } from '@/hooks/useStopwatch';
 import { OBSCURA_URL } from '@/lib/sites';
+import { formatClock } from '@/lib/clock';
 import { defaultEnv, fetchDayStats, flushPending, submitResult, type DayResult, type DayStats } from '@/engineerle/stats';
 import { ComparisonChart } from './ComparisonChart';
+import { EntryScreen } from './EntryScreen';
+import { Finale } from './Finale';
+import { Notepad } from './Notepad';
+import { hasNote } from '@/engineerle/notes';
 import { withSettings } from '@/lib/settings';
-import { IconChart, IconHelp, IconMenu } from './Icons';
+import { IconChart, IconHelp, IconMenu, IconNotes } from './Icons';
 import { Modal } from './Modal';
 import { SettingsModal } from './SettingsModal';
 import { Sidebar } from './Sidebar';
@@ -42,8 +47,6 @@ import { OrbitPuzzle } from './OrbitPuzzle';
 import { AircraftPuzzle } from './AircraftPuzzle';
 import { GearPuzzle } from './GearPuzzle';
 
-const SEEN = 'engineerle:v1:help-seen';
-
 function useToday() {
   const [key, setKey] = useState(() => toDateKey(new Date()));
   useEffect(() => {
@@ -61,6 +64,12 @@ export default function EngineerleApp() {
   const [tab, setTab] = useState(0);
   const [menu, setMenu] = useState(false);
   const [modal, setModal] = useState<null | 'help' | 'stats' | 'settings'>(null);
+  const [screen, setScreen] = useState<'entry' | 'play'>('entry');
+  const [notes, setNotes] = useState(false);
+  const [noteFlag, setNoteFlag] = useState(false);
+  useEffect(() => {
+    document.querySelector('[data-testid="ens-scroll"]')?.scrollTo({ top: 0 });
+  }, [screen]);
   const daily = useMemo(() => getEngineerleDaily(dateKey), [dateKey]);
   const day = getDay(store, dateKey);
   const finished = dayDone(day);
@@ -68,12 +77,10 @@ export default function EngineerleApp() {
   useEffect(() => {
     setStore(loadStore());
     setReady(true);
-    try {
-      if (!window.localStorage.getItem(SEEN)) setModal('help');
-    } catch {
-      /* no storage */
-    }
   }, []);
+  useEffect(() => {
+    if (ready) setNoteFlag(hasNote(dateKey));
+  }, [ready, dateKey]);
   // open on the first puzzle that is not finished
   useEffect(() => {
     if (!ready) return;
@@ -114,14 +121,7 @@ export default function EngineerleApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, finished, dateKey, daily.number]);
 
-  const closeHelp = () => {
-    setModal(null);
-    try {
-      window.localStorage.setItem(SEEN, '1');
-    } catch {
-      /* no storage */
-    }
-  };
+  const closeHelp = () => setModal(null);
 
   // the running clock of the puzzle on screen, so a guess is scored on the exact time, not the last saved second
   const live = useRef<{ index: number; seconds: number } | null>(null);
@@ -194,11 +194,16 @@ export default function EngineerleApp() {
           <button className="icon-btn" aria-label="Menu" onClick={() => setMenu(true)} data-testid="menu-btn">
             <IconMenu size={18} />
           </button>
-          <span className="flex items-center gap-2.5" style={{ color: 'var(--en-ink)' }} data-testid="ens-logo">
+          <span className="flex items-center gap-2.5" style={{ color: 'var(--en-ink)', visibility: screen === 'entry' ? 'hidden' : 'visible' }} data-testid="ens-logo" aria-hidden={screen === 'entry'}>
             <EngineerleMark size={30} />
             <EngineerleWord />
           </span>
           <div className="flex items-center gap-2">
+            {screen === 'play' && (
+              <button className="icon-btn" aria-label={notes ? 'Close notepad' : 'Open notepad'} aria-expanded={notes} onClick={() => setNotes((n) => !n)} data-testid="ens-notes-btn" data-has-note={noteFlag} data-on={notes}>
+                <IconNotes size={17} />
+              </button>
+            )}
             <button className="icon-btn" aria-label="Statistics" onClick={() => setModal('stats')} data-testid="ens-stats-btn">
               <IconChart size={17} />
             </button>
@@ -208,34 +213,52 @@ export default function EngineerleApp() {
           </div>
         </header>
 
-        <p className="ens-p mb-2 mt-1 text-center" data-testid="ens-date">
-          No. {daily.number} · {prettyDate(dateKey)}
-        </p>
+        {screen === 'entry' && ready ? (
+          <EntryScreen
+            dateKey={dateKey}
+            number={daily.number}
+            puzzles={daily.puzzles}
+            day={day}
+            streakDays={streak(store, dateKey)}
+            onStart={() => {
+              play('tap');
+              setScreen('play');
+            }}
+            onHelp={() => setModal('help')}
+          />
+        ) : null}
+        {screen === 'play' && (
+          <>
+            <p className="ens-p mb-2 mt-1 text-center" data-testid="ens-date">
+            No. {daily.number} · {prettyDate(dateKey)}
+          </p>
 
-        <nav className="ens-tabs mb-3" aria-label="Today's five puzzles">
-          {daily.puzzles.map(({ def: p }, i) => {
-            const r = day.puzzles[i];
-            return (
-              <button
-                key={p.id}
-                className="ens-tab"
-                data-on={tab === i}
-                data-state={r.solved ? 'solved' : r.done ? 'failed' : 'open'}
-                data-tries={r.attempts}
-                aria-current={tab === i ? 'page' : undefined}
-                aria-label={`${i + 1}. ${p.title}${r.solved ? ', solved' : r.done ? ', not solved' : r.attempts ? `, ${r.attempts} guesses used` : ''}`}
-                onClick={() => goto(i)}
-                data-testid={`ens-tab-${i}`}
-              >
-                <small>{i + 1}</small>
-                <span>{p.tab}</span>
-                <i />
-              </button>
-            );
-          })}
-        </nav>
+          <nav className="ens-tabs mb-3" aria-label="Today's five puzzles">
+            {daily.puzzles.map(({ def: p }, i) => {
+              const r = day.puzzles[i];
+              return (
+                <button
+                  key={p.id}
+                  className="ens-tab"
+                  data-on={tab === i}
+                  data-state={r.solved ? 'solved' : r.done ? 'failed' : 'open'}
+                  data-tries={r.attempts}
+                  aria-current={tab === i ? 'page' : undefined}
+                  aria-label={`${i + 1}. ${p.title}${r.solved ? ', solved' : r.done ? ', not solved' : r.attempts ? `, ${r.attempts} guesses used` : ''}`}
+                  onClick={() => goto(i)}
+                  data-testid={`ens-tab-${i}`}
+                >
+                  <small>{i + 1}</small>
+                  <span>{p.tab}</span>
+                  <i />
+                </button>
+              );
+            })}
+          </nav>
+          </>
+        )}
 
-        {!ready ? (
+        {screen !== 'play' ? null : !ready ? (
           <div className="ens-card grid h-64 place-items-center" aria-busy>
             <EngineerleMark size={48} />
           </div>
@@ -285,6 +308,7 @@ export default function EngineerleApp() {
           onClose={() => setMenu(false)}
         />
       )}
+      {notes && screen === 'play' && <Notepad key={dateKey} dateKey={dateKey} onClose={() => setNotes(false)} onChange={setNoteFlag} />}
       {modal === 'settings' && <SettingsModal onClose={() => setModal(null)} />}
       {modal === 'help' && <EngineerleHelp onClose={closeHelp} />}
       {modal === 'stats' && <EngineerleStats store={store} today={dateKey} onClose={() => setModal(null)} />}
@@ -294,10 +318,7 @@ export default function EngineerleApp() {
 
 /* ───────────────────────────── timer ───────────────────────────── */
 
-export function formatClock(seconds: number): string {
-  const s = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
+export { formatClock };
 
 /** Time spent on this puzzle against its par. Runs only while the puzzle is open and unfinished. */
 function PuzzleClock({ index, par, record, paused, live, onSave }: { index: number; par: number; record: PuzzleRecord; paused: boolean; live: MutableRefObject<{ index: number; seconds: number } | null>; onSave: (index: number, seconds: number) => void }) {
@@ -351,63 +372,102 @@ function Summary({ dateKey, number, puzzles, store, compare, onGo }: { dateKey: 
       window.prompt('Copy your result', text);
     }
   };
+  const compareNow = () => {
+    const el = document.querySelector('[data-testid="ens-compare"]') ?? document.querySelector('[data-testid="ens-parts"]');
+    el?.scrollIntoView({ behavior: settings.reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  };
+  const obscura = (
+    <a className="ens-ghost" href={withSettings(OBSCURA_URL, settings)} data-testid="ens-to-obscura" data-silent>
+      Play Obscura
+    </a>
+  );
+  const shareBtn = (
+    <button className="ens-btn" onClick={share} disabled={!finished} data-testid="ens-share">
+      {copied ? 'Copied' : 'Share'}
+    </button>
+  );
+  const countdown = (
+    <>
+      Next puzzles in <b className="font-mono" style={{ color: 'var(--en-ink)' }}>{formatCountdown(left)}</b>
+    </>
+  );
   return (
-    <section className="ens-card ens-fade p-4 sm:p-5" data-testid="ens-summary" aria-label="Today's results">
-      <h2 className="ens-h">{finished ? 'Drawing signed off' : 'Still on the board'}</h2>
-      <p className="ens-p">Engineerle No. {number}</p>
-      <div className="my-4 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="font-mono text-4xl font-bold leading-none" style={{ color: 'var(--en-ink)' }} data-testid="ens-points">
-            {pts}
-            <span className="text-lg font-semibold" style={{ color: 'var(--en-faint)' }}> / {MAX_DAY_POINTS}</span>
-          </p>
-          <p className="ens-label mt-1">{daySolved(day)} of 5 solved</p>
-        </div>
-        <div className="ens-result" aria-label="Your results" data-testid="ens-squares">
-          {day.puzzles.map((p, i) => (
-            <span key={i}>{p.done || p.attempts ? square(p) : '⬜'}</span>
-          ))}
-        </div>
-      </div>
-      <ul className="m-0 flex list-none flex-col p-0" style={{ borderTop: '1px solid var(--en-line)' }}>
-        {puzzles.map(({ def: p }, i) => {
-          const r = day.puzzles[i];
-          return (
-            <li key={p.id} style={{ borderBottom: '1px solid var(--en-line)' }}>
-              <button className="flex w-full items-center gap-3 py-2.5 text-left" style={{ background: 'transparent', border: 0, color: 'var(--en-ink)', cursor: 'pointer' }} onClick={() => onGo(i)}>
-                <span className="w-6 text-lg">{r.done || r.attempts ? square(r) : '⬜'}</span>
-                <span className="min-w-0 flex-1">
-                  <b className="block text-sm">{p.title}</b>
-                  <span className="ens-label">{r.solved ? `Solved on guess ${r.attempts}` : r.done ? 'Not solved' : r.attempts ? `${r.attempts} guesses used` : 'Not started'}</span>
-                </span>
-                <b className="font-mono text-sm">{r.points}</b>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      {finished && compare.state !== 'idle' && (
-        <ComparisonChart
-          stats={compare.state === 'ready' ? compare.stats : null}
-          loading={compare.state === 'loading'}
-          mineIncluded={compare.state === 'ready' ? compare.mineIncluded : true}
-          you={{ total: pts, points: day.puzzles.map((p) => p.points), ids: day.puzzles.map((p) => p.id) }}
+    <div className="flex flex-col gap-4" data-testid="ens-summary" aria-label="Today's results">
+      {finished && (
+        <Finale
+          dateKey={dateKey}
+          number={number}
+          day={day}
+          points={pts}
+          streakDays={streak(store, dateKey)}
+          actions={
+            <>
+              {shareBtn}
+              <button className="ens-ghost" onClick={compareNow} data-testid="ens-see-compare">See how you compare</button>
+              {obscura}
+            </>
+          }
+          footer={countdown}
         />
       )}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="ens-label">
-          Next puzzles in <b className="font-mono" style={{ color: 'var(--en-ink)' }}>{formatCountdown(left)}</b>
-        </p>
-        <div className="flex gap-2">
-          <a className="ens-ghost" href={withSettings(OBSCURA_URL, settings)} data-testid="ens-to-obscura" data-silent>
-            Play Obscura
-          </a>
-          <button className="ens-btn" onClick={share} disabled={!finished} data-testid="ens-share">
-            {copied ? 'Copied' : 'Share'}
-          </button>
-        </div>
-      </div>
-    </section>
+      <section className="ens-card ens-fade p-4 sm:p-5" data-testid="ens-parts">
+        {!finished && (
+          <>
+            <h2 className="ens-h">Still on the board</h2>
+            <p className="ens-p">Engineerle No. {number}</p>
+            <div className="my-4 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="font-mono text-4xl font-bold leading-none" style={{ color: 'var(--en-ink)' }} data-testid="ens-points">
+                  {pts}
+                  <span className="text-lg font-semibold" style={{ color: 'var(--en-faint)' }}> / {MAX_DAY_POINTS}</span>
+                </p>
+                <p className="ens-label mt-1">{daySolved(day)} of 5 solved</p>
+              </div>
+              <div className="ens-result" aria-label="Your results" data-testid="ens-squares">
+                {day.puzzles.map((p, i) => (
+                  <span key={i}>{p.done || p.attempts ? square(p) : '⬜'}</span>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+        {finished && <h2 className="ens-h">Puzzle by puzzle</h2>}
+        <ul className="m-0 mt-2 flex list-none flex-col p-0" style={{ borderTop: '1px solid var(--en-line)' }}>
+          {puzzles.map(({ def: p }, i) => {
+            const r = day.puzzles[i];
+            return (
+              <li key={p.id} style={{ borderBottom: '1px solid var(--en-line)' }}>
+                <button className="flex w-full items-center gap-3 py-2.5 text-left" style={{ background: 'transparent', border: 0, color: 'var(--en-ink)', cursor: 'pointer' }} onClick={() => onGo(i)}>
+                  <span className="w-6 text-lg">{r.done || r.attempts ? square(r) : '⬜'}</span>
+                  <span className="min-w-0 flex-1">
+                    <b className="block text-sm">{p.title}</b>
+                    <span className="ens-label">{r.solved ? `Solved on guess ${r.attempts}` : r.done ? 'Not solved' : r.attempts ? `${r.attempts} guesses used` : 'Not started'}</span>
+                  </span>
+                  <b className="font-mono text-sm">{r.points}</b>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {finished && compare.state !== 'idle' && (
+          <ComparisonChart
+            stats={compare.state === 'ready' ? compare.stats : null}
+            loading={compare.state === 'loading'}
+            mineIncluded={compare.state === 'ready' ? compare.mineIncluded : true}
+            you={{ total: pts, points: day.puzzles.map((p) => p.points), ids: day.puzzles.map((p) => p.id) }}
+          />
+        )}
+        {!finished && (
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="ens-label">{countdown}</p>
+            <div className="flex gap-2">
+              {obscura}
+              {shareBtn}
+            </div>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }
 

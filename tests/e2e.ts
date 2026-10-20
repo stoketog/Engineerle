@@ -20,14 +20,17 @@ import { solvePlacements, type AircraftSpec } from '@/engineerle/aircraft';
 import { hohmann, type OrbitSpec } from '@/engineerle/orbit';
 import { evaluate as rkEval, bestSplit, type RocketSpec } from '@/engineerle/rocket';
 import { evaluate as opEval, RF_VALUES, RG_VALUES, type OpampSpec } from '@/engineerle/opamp';
+import { ratingFor } from '@/engineerle/rating';
 import { evaluate as rcEval, R_VALUES, C_VALUES, type FilterSpec } from '@/engineerle/rcfilter';
 
+const DISCIPLINE: Record<string, string> = { structures: 'Structures', mechanical: 'Mechanical', electrical: 'Electrical', electronics: 'Electronics', aerospace: 'Aerospace' };
 const PROD = 'http://localhost:4182/';
 const servers: ChildProcess[] = [];
 const serve = (out: string, port: number) => servers.push(spawn('node', ['scripts/serve.mjs'], { env: { ...process.env, ENGINEERLE_OUT: out, PORT: String(port) }, stdio: 'ignore' }));
 
 let pass = 0, fail = 0;
 async function t(name: string, fn: () => Promise<void>) {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) return; // ONLY="entry:" npm run test:e2e runs just the matching tests
   try { await fn(); pass++; console.log('  ✓', name); } catch (e) { fail++; console.error('  ✗', name, '\n     ', (e as Error).message.split('\n').slice(0, 5).join('\n      ')); }
 }
 const eq = (a: unknown, b: unknown, m = '') => { if (a !== b) throw new Error(`${m} expected ${JSON.stringify(b)} got ${JSON.stringify(a)}`); };
@@ -65,9 +68,9 @@ const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers
 const GOOD_BUCKETS = [0, 0, 0, 1, 1, 2, 2, 3, 4, 5, 5, 4, 4, 3, 2, 0, 0, 0, 4, 0];
 const FEW_BUCKETS = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0];
 const statsBody = (buckets: number[], mean: number) => JSON.stringify({ n: buckets.reduce((a, c) => a + c, 0), mean, buckets, perPuzzle: Object.fromEntries(en.puzzles.map((x, i) => [x.def.id, { n: 40, mean: 40 + i * 10 }])) });
-/** Marks the day as finished before the page loads: guesses per puzzle, 20 s each, so the points are known (100 on guess 1, 65 on guess 2). */
-const seedDay = (guesses: number[]) => ({ v: 2, days: { [DAY]: { puzzles: en.puzzles.map((x, i) => ({ id: x.def.id, attempts: guesses[i], solved: true, done: true, points: 0, seconds: 20 })) } } });
-async function openEn(b: Browser, opts: { mobile?: boolean; settings?: Record<string, unknown>; noGL?: boolean; url?: string; skipHelp?: boolean; stats?: StatsMode; seed?: number[] } = {}) {
+/** Marks puzzles as solved before the page loads: guesses per puzzle (0 = not started), 20 s each, so the points are known (100 on guess 1, 65 on guess 2). */
+const seedDay = (guesses: number[]) => ({ v: 2, days: { [DAY]: { puzzles: en.puzzles.map((x, i) => ({ id: x.def.id, attempts: guesses[i], solved: guesses[i] > 0, done: guesses[i] > 0, points: 0, seconds: guesses[i] > 0 ? 20 : 0 })) } } });
+async function openEn(b: Browser, opts: { mobile?: boolean; settings?: Record<string, unknown>; noGL?: boolean; url?: string; skipHelp?: boolean /* true (default): press Start on the entry screen */; stats?: StatsMode; seed?: number[] } = {}) {
   const ctx = await b.newContext({ viewport: opts.mobile ? { width: 360, height: 740 } : { width: 1280, height: 900 }, hasTouch: !!opts.mobile, reducedMotion: 'reduce', timezoneId: 'UTC', permissions: ['clipboard-read', 'clipboard-write'] });
   if (opts.settings) await ctx.addInitScript((st) => { try { if (!localStorage.getItem('engineerle:v1:settings')) localStorage.setItem('engineerle:v1:settings', JSON.stringify(st)); } catch { /* none */ } }, opts.settings);
   if (opts.noGL) await ctx.addInitScript(() => {
@@ -98,10 +101,12 @@ async function openEn(b: Browser, opts: { mobile?: boolean; settings?: Record<st
   await page.clock.install({ time: new Date(`${DAY}T10:00:00Z`) });
   await page.goto((opts.url ?? PROD) + '?lite#engineerle');
   await page.clock.resume();
-  await q(page, 'ens-help-modal').waitFor();
-  if (opts.skipHelp !== false) await q(page, 'ens-help-ok').click();
+  await q(page, 'ens-entry').waitFor();
+  if (opts.skipHelp !== false) await q(page, 'ens-start').click();
   return { ctx, page, errors, posts };
 }
+/** Reload the page; it opens on the entry screen again, so press Start to get back to the puzzles. */
+async function reloadPlay(p: Page) { await p.reload(); await q(p, 'ens-entry').waitFor(); await q(p, 'ens-start').click(); }
 const pipsUsed = async (p: Page) => /^(\d) of 3/.exec((await q(p, 'pips').getAttribute('aria-label')) ?? '')?.[1];
 async function solveLever(p: Page) { await q(p, 'lever-slider').fill(String(leverAnswer)); await q(p, 'lever-release').click(); await q(p, 'lever-final').waitFor(); }
 async function solveBridge(p: Page) { for (const i of bSpec.weak) await q(p, `bridge-m-${i}`).click(); await q(p, 'bridge-test').click(); await q(p, 'bridge-final').waitFor(); }
@@ -168,7 +173,7 @@ async function main() {
     eq(await pipsUsed(p), '1', 'one guess used');
     await q(p, 'graph-input').fill(gSpec.answer); await q(p, 'graph-submit').click(); await q(p, 'graph-final').waitFor();
     ok((await text(p, 'graph-final')).includes('Solved'), 'solved'); eq(await q(p, tab('waveform')).getAttribute('data-state'), 'solved', 'tab');
-    await p.reload(); await q(p, tab('waveform')).waitFor(); eq(await q(p, tab('waveform')).getAttribute('data-state'), 'solved', 'saved');
+    await reloadPlay(p); await q(p, tab('waveform')).waitFor(); eq(await q(p, tab('waveform')).getAttribute('data-state'), 'solved', 'saved');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
   });
   await t('three wrong signals end the puzzle and show the answer', async () => {
@@ -365,7 +370,7 @@ async function main() {
     ok((await text(p, 'ens-par')).startsWith('Par '), 'par shown');
     const t0 = await secs(); await p.waitForTimeout(2600); const t1 = await secs();
     ok(t1 >= t0 + 2, `timer advances (${t0} -> ${t1})`);
-    await p.reload(); await q(p, tab('lever')).click(); const t2 = await secs();
+    await reloadPlay(p); await q(p, tab('lever')).click(); const t2 = await secs();
     ok(Math.abs(t2 - t1) <= 4 && t2 >= t1 - 1, `kept across a reload (${t1} -> ${t2})`);
     await solveLever(p); await p.waitForTimeout(300); const t3 = await secs(); eq(await q(p, 'ens-clock').getAttribute('data-state'), 'done', 'clock done');
     await p.waitForTimeout(1500); eq(await secs(), t3, 'stopped once solved');
@@ -373,9 +378,11 @@ async function main() {
   });
   await t('the timer waits while a dialog is open', async () => {
     useDay(DAY0);
-    const { ctx, page: p } = await openEn(b, { skipHelp: false });
-    await p.waitForTimeout(1500); eq(await q(p, 'ens-clock').getAttribute('data-state'), 'paused', 'paused behind the dialog');
-    eq(await q(p, 'ens-timer').getAttribute('data-seconds'), '0', 'no time counted'); await ctx.close();
+    const { ctx, page: p } = await openEn(b);
+    await q(p, 'menu-btn').click(); await q(p, 'side-help').click(); await q(p, 'ens-help-modal').waitFor();
+    const s0 = Number(await q(p, 'ens-timer').getAttribute('data-seconds')); await p.waitForTimeout(1800);
+    eq(await q(p, 'ens-clock').getAttribute('data-state'), 'paused', 'paused behind the dialog');
+    eq(Number(await q(p, 'ens-timer').getAttribute('data-seconds')), s0, 'no time counted'); await ctx.close();
   });
   await t('no puzzle page shows a hint', async () => {
     useDay(DAY0);
@@ -397,7 +404,7 @@ async function main() {
     await q(p, 'ens-share').click(); await p.waitForTimeout(300);
     const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '');
     ok(clip === '' || (clip.startsWith(`Engineerle #${en.number}  500/500`) && clip.includes('🟩🟩🟩🟩🟩')), `share text: ${clip}`);
-    await p.reload(); await q(p, 'ens-summary').waitFor(); ok((await text(p, 'ens-points')).startsWith('500'), 'kept after reload');
+    await reloadPlay(p); await q(p, 'ens-summary').waitFor(); ok((await text(p, 'ens-points')).startsWith('500'), 'kept after reload');
     await p.waitForFunction(() => document.querySelector('[data-testid=ens-compare]')?.getAttribute('data-state') === 'ready'); eq(posts.length, 1, 'a reload does not send the day again');
     await q(p, 'ens-stats-btn').click(); await q(p, 'ens-stats-modal').waitFor(); ok((await text(p, 'ens-stats-modal')).includes('Perfect days'), 'stats');
     eq(errors.length, 0, errors.join('|')); await ctx.close();
@@ -443,17 +450,17 @@ async function main() {
     // the service recovers: same browser storage, new page
     await first.ctx.unroute(`${STATS_ORIGIN}/**`); const posts2: unknown[] = [];
     await first.ctx.route(`${STATS_ORIGIN}/**`, async (route) => { const req = route.request(); if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS }); if (req.url().endsWith('engineerle_submit')) { posts2.push(JSON.parse(req.postData() ?? '{}')); return route.fulfill({ status: 204, headers: CORS }); } return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'application/json' }, body: statsBody(GOOD_BUCKETS, 270) }); });
-    await first.page.reload(); await q(first.page, 'ens-summary').waitFor(); await first.page.waitForFunction(() => document.querySelector('[data-testid=ens-compare]')?.getAttribute('data-state') === 'ready');
+    await reloadPlay(first.page); await q(first.page, 'ens-summary').waitFor(); await first.page.waitForFunction(() => document.querySelector('[data-testid=ens-compare]')?.getAttribute('data-state') === 'ready');
     eq(posts2.length, 1, 'sent on the next visit'); eq(JSON.stringify(posts2[0]).includes(`"p_day":${en.number}`), true, 'same day');
     const sent = await first.page.evaluate(() => localStorage.getItem('engineerle:v2:pending')); eq(sent, null, 'queue emptied');
-    await first.page.reload(); await q(first.page, 'ens-summary').waitFor(); await first.page.waitForFunction(() => document.querySelector('[data-testid=ens-compare]')?.getAttribute('data-state') === 'ready');
+    await reloadPlay(first.page); await q(first.page, 'ens-summary').waitFor(); await first.page.waitForFunction(() => document.querySelector('[data-testid=ens-compare]')?.getAttribute('data-state') === 'ready');
     eq(posts2.length, 1, 'and not again'); eq(first.errors.length, 0, first.errors.join('|')); void tried; await first.ctx.close();
   });
   await t('comparison: damaged saved queue and device id are ignored', async () => {
     useDay(DAY0);
     const r = await openEn(b, { seed: [1, 1, 1, 1, 1] });
     await r.page.evaluate(() => { localStorage.setItem('engineerle:v2:pending', '{{{ nope'); localStorage.setItem('engineerle:v2:device', '12'); localStorage.setItem('engineerle:v2:sent', '"x"'); });
-    await r.page.reload(); await q(r.page, 'ens-summary').waitFor(); await r.page.waitForFunction(() => document.querySelector('[data-testid=ens-compare]')?.getAttribute('data-state') === 'ready');
+    await reloadPlay(r.page); await q(r.page, 'ens-summary').waitFor(); await r.page.waitForFunction(() => document.querySelector('[data-testid=ens-compare]')?.getAttribute('data-state') === 'ready');
     eq(r.errors.length, 0, r.errors.join('|')); await r.ctx.close();
   });
   await t('comparison: draws in dark and light at phone width with no sideways scroll', async () => {
@@ -482,6 +489,110 @@ async function main() {
     { const m = num(tx, /Rf = ([\d.]+) (MΩ|kΩ|Ω) and Rg = ([\d.]+) (MΩ|kΩ|Ω)/); ok(opEval(oSpec, ohms(m[1], m[2]), ohms(m[3], m[4])).solved, `op-amp: ${tx}`); } await r.ctx.close();
     r = await reopened('aircraft'); tx = await text(r.page, 'air-final'); ok(tx.includes('A loading that works'), `aircraft: ${tx}`); await r.ctx.close();
     r = await reopened('gears'); tx = await text(r.page, 'gear-final'); ok(tx.includes('One train that works'), `gears: ${tx}`); await r.ctx.close();
+  });
+
+  console.log('\nEntry screen, end screen and notepad');
+  const fmt = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+  await t('entry: a new player sees the day, the five disciplines and the rules, no clock runs, and Start opens the first puzzle', async () => {
+    useDay(DAY0);
+    const { ctx, page: p, errors } = await openEn(b, { skipHelp: false });
+    eq(await q(p, 'ens-entry').getAttribute('data-state'), 'new', 'state');
+    ok((await text(p, 'ens-entry-date')).includes(`No. ${en.number}`), `date line: ${await text(p, 'ens-entry-date')}`);
+    eq(await p.locator('[data-testid^=ens-entry-row-]').count(), 5, 'five rows');
+    const rows = (await p.locator('[data-testid^=ens-entry-row-]').allInnerTexts()).join(' | ');
+    for (const { def } of en.puzzles) ok(rows.includes(DISCIPLINE[def.discipline]), `${def.discipline} listed: ${rows}`);
+    ok(!en.puzzles.some(({ def }) => rows.includes(def.title)), 'the puzzles themselves are not given away');
+    const rules = await text(p, 'ens-entry-rules'); ok(/three guesses/i.test(rules) && /clock/i.test(rules) && /no hints/i.test(rules), `rules: ${rules}`);
+    eq(await text(p, 'ens-start'), "Start today's drawing", 'button');
+    eq(await p.locator('[data-testid=ens-clock]').count(), 0, 'no clock before Start'); eq(await p.locator('[data-testid=ens-help-modal]').count(), 0, 'no dialog in the way');
+    eq(await p.locator('[data-testid=ens-notes-btn]').count(), 0, 'no notepad button on the entry screen');
+    await p.waitForTimeout(1500); await q(p, 'ens-start').click(); await q(p, 'ens-clock').waitFor();
+    eq(Number(await q(p, 'ens-timer').getAttribute('data-seconds')), 0, 'the clock starts at Start, not at arrival'); eq(await q(p, 'ens-tab-0').getAttribute('data-on'), 'true', 'first puzzle');
+    eq(errors.length, 0, errors.join('|')); await ctx.close();
+  });
+  await t('entry: How it works opens the rules', async () => {
+    useDay(DAY0);
+    const { ctx, page: p } = await openEn(b, { skipHelp: false });
+    await q(p, 'ens-entry-help').click(); await q(p, 'ens-help-modal').waitFor(); await q(p, 'ens-help-ok').click(); await q(p, 'ens-entry').waitFor(); await ctx.close();
+  });
+  await t('entry: part way through the day it offers to continue on the first unfinished puzzle', async () => {
+    useDay(DAY0);
+    const { ctx, page: p } = await openEn(b, { skipHelp: false, seed: [1, 2, 0, 0, 0] });
+    eq(await q(p, 'ens-entry').getAttribute('data-state'), 'continue', 'state'); ok((await text(p, 'ens-start')).startsWith('Continue'), await text(p, 'ens-start'));
+    ok((await text(p, 'ens-entry')).includes('2 of 5'), 'progress shown');
+    eq(await q(p, 'ens-entry-row-0').getAttribute('data-state'), 'solved', 'row 1'); eq(await q(p, 'ens-entry-row-2').getAttribute('data-state'), 'open', 'row 3');
+    await q(p, 'ens-start').click(); eq(await q(p, 'ens-tab-2').getAttribute('data-on'), 'true', 'opens the third puzzle'); await ctx.close();
+  });
+  await t('entry: a finished day offers the results, and the countdown to tomorrow', async () => {
+    useDay(DAY0);
+    const { ctx, page: p } = await openEn(b, { skipHelp: false, seed: [1, 1, 1, 1, 1] });
+    eq(await q(p, 'ens-entry').getAttribute('data-state'), 'done', 'state'); eq(await text(p, 'ens-start'), 'See your results', 'button');
+    ok(/\d+:\d\d:\d\d/.test(await text(p, 'ens-entry')), 'countdown'); await q(p, 'ens-start').click(); await q(p, 'ens-finale').waitFor(); await ctx.close();
+  });
+  await t('entry: Start (or See your results) opens the next screen from the top, even when the entry screen was scrolled', async () => {
+    useDay(DAY0);
+    const { ctx, page: p } = await openEn(b, { skipHelp: false, mobile: true, seed: [1, 1, 2, 1, 1] });
+    await p.evaluate(() => document.querySelector('[data-testid=ens-scroll]')!.scrollTo({ top: 300 }));
+    ok(await p.evaluate(() => document.querySelector('[data-testid=ens-scroll]')!.scrollTop) > 50, 'the entry screen scrolled');
+    await p.evaluate(() => (document.querySelector('[data-testid=ens-start]') as HTMLButtonElement).click()); await q(p, 'ens-finale').waitFor(); await p.waitForTimeout(200);
+    eq(await p.evaluate(() => document.querySelector('[data-testid=ens-scroll]')!.scrollTop), 0, 'at the top'); await ctx.close();
+  });
+  await t('end screen: a finished day is signed off with a stamp, a title, the score, the time and the streak', async () => {
+    const { ctx, page: p, errors } = await finishedDay(b);
+    await q(p, 'ens-finale').waitFor(); await q(p, 'ens-stamp').waitFor();
+    eq(await text(p, 'ens-rating'), ratingFor(465).title, 'title for 465'); ok((await text(p, 'ens-points')).startsWith('465'), 'score');
+    ok((await text(p, 'ens-finale-solved')).includes('5 of 5'), 'solved'); eq((await text(p, 'ens-finale-time')).replace(/\s/g, ''), fmt(100), 'five puzzles at 20 s');
+    ok(/^\d+/.test(await text(p, 'ens-finale-streak')), `streak: ${await text(p, 'ens-finale-streak')}`);
+    ok((await text(p, 'ens-squares')).includes('🟩') && (await text(p, 'ens-squares')).includes('🟨'), 'squares');
+    ok(await q(p, 'ens-share').isVisible() && await q(p, 'ens-to-obscura').isVisible(), 'share and Obscura are in the finale');
+    await p.waitForFunction(() => document.querySelector('[data-testid=ens-compare]')?.getAttribute('data-state') === 'ready');
+    await q(p, 'ens-see-compare').click(); await p.waitForTimeout(700);
+    const box = await q(p, 'ens-compare').boundingBox(); ok(!!box && box.y < 700 && box.y + box.height > 0, `comparison scrolled into view: ${JSON.stringify(box)}`);
+    eq(errors.length, 0, errors.join('|')); await ctx.close();
+  });
+  await t('end screen: it fits a phone in dark and light with no sideways scroll, and is not shown for a day that is not finished', async () => {
+    for (const theme of ['dark', 'light']) {
+      const { ctx, page: p, errors } = await finishedDay(b, { mobile: true, settings: { volume: 40, muted: true, theme, lowCpu: true, reduceMotion: true } });
+      await q(p, 'ens-finale').waitFor(); await q(p, 'ens-stamp').waitFor();
+      const w = await p.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth, document.querySelector('[data-testid=ens-finale]')!.scrollWidth, document.querySelector('[data-testid=ens-finale]')!.clientWidth]);
+      ok(w[0] <= w[1] + 1 && w[2] <= w[3] + 1, `${theme}: no sideways scroll ${w}`); eq(errors.length, 0, errors.join('|')); await ctx.close();
+    }
+    useDay(DAY0); const r = await openEn(b, { seed: [1, 1, 1, 1, 0] }); eq(await r.page.locator('[data-testid=ens-finale]').count(), 0, 'no finale for four of five'); await r.ctx.close();
+  });
+  await t('notepad: opens from any puzzle, keeps what is written across a reload, and does not stop the clock', async () => {
+    useDay(DAY0);
+    const { ctx, page: p, errors } = await openEn(b);
+    await q(p, 'ens-notes-btn').click(); await q(p, 'ens-notes').waitFor();
+    eq(await p.locator('[data-testid=ens-help-modal]').count(), 0, 'not a blocking dialog');
+    await q(p, 'ens-notes-text').fill('f = 1/(2πRC)\nR = 1.6k'); await p.waitForTimeout(700);
+    const t0 = Number(await q(p, 'ens-timer').getAttribute('data-seconds')); await p.waitForTimeout(2300);
+    eq(await q(p, 'ens-clock').getAttribute('data-state'), 'running', 'the clock keeps running with the notepad open'); ok(Number(await q(p, 'ens-timer').getAttribute('data-seconds')) >= t0 + 2, 'time advanced');
+    ok((await text(p, 'ens-notes-count')).includes(String('f = 1/(2πRC)\nR = 1.6k'.length)), `count: ${await text(p, 'ens-notes-count')}`);
+    await p.keyboard.press('Escape'); await q(p, 'ens-notes').waitFor({ state: 'detached' });
+    await q(p, 'ens-tab-3').click(); await q(p, 'ens-notes-btn').click(); eq(await q(p, 'ens-notes-text').inputValue(), 'f = 1/(2πRC)\nR = 1.6k', 'the same note on every puzzle');
+    await q(p, 'ens-notes-close').click(); await p.reload(); await q(p, 'ens-entry').waitFor(); await q(p, 'ens-start').click();
+    await q(p, 'ens-notes-btn').click(); eq(await q(p, 'ens-notes-text').inputValue(), 'f = 1/(2πRC)\nR = 1.6k', 'kept after a reload');
+    eq(errors.length, 0, errors.join('|')); await ctx.close();
+  });
+  await t('notepad: Clear asks twice before wiping the page, and the notepad button shows when there is a note', async () => {
+    useDay(DAY0);
+    const { ctx, page: p } = await openEn(b);
+    eq(await q(p, 'ens-notes-btn').getAttribute('data-has-note'), 'false', 'empty at first');
+    await q(p, 'ens-notes-btn').click(); await q(p, 'ens-notes-text').fill('keep me'); await p.waitForTimeout(600);
+    await q(p, 'ens-notes-clear').click(); eq(await q(p, 'ens-notes-text').inputValue(), 'keep me', 'one press is not enough'); ok((await text(p, 'ens-notes-clear')).includes('Really'), 'asks again');
+    await q(p, 'ens-notes-clear').click(); eq(await q(p, 'ens-notes-text').inputValue(), '', 'second press clears');
+    await q(p, 'ens-notes-text').fill('again'); await p.waitForTimeout(600); await q(p, 'ens-notes-close').click(); eq(await q(p, 'ens-notes-btn').getAttribute('data-has-note'), 'true', 'marked once it has a note'); await ctx.close();
+  });
+  await t('notepad: sits inside a phone screen in dark and light, and the puzzle stays reachable', async () => {
+    for (const theme of ['dark', 'light']) {
+      useDay(DAY0);
+      const { ctx, page: p, errors } = await openEn(b, { mobile: true, settings: { volume: 40, muted: true, theme, lowCpu: true, reduceMotion: true } });
+      await q(p, 'ens-notes-btn').click(); await q(p, 'ens-notes').waitFor(); await q(p, 'ens-notes-text').fill('x'.repeat(300)); await p.waitForTimeout(300);
+      const m = await p.evaluate(() => { const r = document.querySelector('[data-testid=ens-notes]')!.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: window.innerWidth, h: window.innerHeight, sw: document.documentElement.scrollWidth }; });
+      ok(m.l >= -1 && m.r <= m.w + 1 && m.b <= m.h + 1 && m.t > 0 && m.sw <= m.w + 1, `${theme}: ${JSON.stringify(m)}`);
+      ok(m.t >= m.h * 0.3, `${theme}: leaves the top of the screen free: ${JSON.stringify(m)}`);
+      eq(errors.length, 0, errors.join('|')); await ctx.close();
+    }
   });
 
   await t('Engineerle follows the settings: light theme and Low CPU draw every puzzle without errors', async () => {
@@ -526,7 +637,7 @@ async function main() {
     eq(await p.evaluate(() => document.documentElement.dataset.theme), 'light', 'light now');
     eq(await p.evaluate(() => document.documentElement.dataset.perf), 'low', 'low cpu now');
     await q(p, 'settings-close').click();
-    await p.reload(); await q(p, tab('waveform')).waitFor();
+    await reloadPlay(p); await q(p, tab('waveform')).waitFor();
     const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('engineerle:v1:settings') ?? '{}'));
     eq(saved.volume, 35, 'volume saved'); eq(saved.muted, true, 'muted saved'); eq(saved.theme, 'light', 'theme saved'); eq(saved.lowCpu, true, 'low cpu saved'); eq(saved.reduceMotion, false, 'motion saved (it started on, following the device, and was switched off)');
     eq(await p.evaluate(() => document.documentElement.dataset.theme), 'light', 'theme kept after reload');
@@ -545,7 +656,7 @@ async function main() {
     const ctx = await b.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce', timezoneId: 'UTC' });
     const p = await ctx.newPage(); p.setDefaultTimeout(20_000);
     await p.goto(PROD + '?lite&s=20.1.light.1.1');
-    await q(p, 'ens-help-modal').waitFor();
+    await q(p, 'ens-entry').waitFor();
     eq(await p.evaluate(() => document.documentElement.dataset.theme), 'light', 'theme adopted');
     eq(await p.evaluate(() => document.documentElement.dataset.perf), 'low', 'low cpu adopted');
     const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('engineerle:v1:settings') ?? '{}'));
@@ -558,7 +669,7 @@ async function main() {
     const ctx = await b.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce', timezoneId: 'UTC' });
     const p = await ctx.newPage(); p.setDefaultTimeout(20_000);
     await p.goto(PROD + '?lite&s=999.9.pink.x.y');
-    await q(p, 'ens-help-modal').waitFor();
+    await q(p, 'ens-entry').waitFor();
     const saved = await p.evaluate(() => localStorage.getItem('engineerle:v1:settings'));
     ok(saved === null || JSON.parse(saved).theme !== 'pink', 'bad value not stored');
     ok(!(await p.evaluate(() => location.search)).includes('s='), 'address tidied');

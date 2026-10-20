@@ -18,6 +18,8 @@ Three guesses on each puzzle, a clock that runs only while a puzzle is open and 
 wrong guess says what physically happened (the meter reads, the bridge collapses, the orbit tops out at this height),
 never what to change.
 
+The game opens on an entry screen (the day's drawing sheet: number, date, streak and the five disciplines, with one button to start, continue or see the results) and ends on a stamped "Signed off" screen with a title for the total, the time and the streak. A notepad button in the header opens scratch paper for the day; it is saved on the device only and never stops the clock.
+
 A puzzle is worth `round(100 · G · T)`:
 
 - `G` is 1, 0.65 or 0.35 for a solve on the first, second or third guess;
@@ -76,8 +78,8 @@ never twice.
 
 | Path | What |
 | --- | --- |
-| `src/engineerle/` | Pure physics and generators, `registry.ts` (the pool), `select.ts` (the daily five), `scoring.ts`, `store.ts` (saved progress), `stats.ts` (the stats client) |
-| `src/components/` | The app, one component per puzzle, `ComparisonChart`, the shared 3D `Stage`, sidebar, settings, modals |
+| `src/engineerle/` | Pure physics and generators, `registry.ts` (the pool), `select.ts` (the daily five), `scoring.ts`, `rating.ts` (the end-screen title), `notes.ts` (the notepad), `store.ts` (saved progress), `stats.ts` (the stats client) |
+| `src/components/` | The app, one component per puzzle, `EntryScreen`, `Finale`, `Notepad`, `ComparisonChart`, the shared 3D `Stage`, sidebar, settings, modals |
 | `src/lib/` | Settings and the cross-site hand-off, sound effects (synthesised, no audio files), dates |
 | `supabase/migrations/` | The stats schema |
 | `tests/` | One test file per model plus `e2e.ts` (browser) |
