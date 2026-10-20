@@ -31,6 +31,8 @@ await build({
   define: {
     'process.env.NODE_ENV': '"production"',
     'process.env.NEXT_PUBLIC_OBSCURA_URL': JSON.stringify(process.env.NEXT_PUBLIC_OBSCURA_URL || ''),
+    'process.env.NEXT_PUBLIC_SUPABASE_URL': JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_URL || ''),
+    'process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY': JSON.stringify(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''),
   },
   logLevel: 'info',
 });
